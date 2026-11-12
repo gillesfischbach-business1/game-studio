@@ -1,0 +1,408 @@
+<!-- PROTOTYPE - NOT FOR PRODUCTION -->
+<!-- Question: Does grounded, weighty car physics stay drivable for a first-time player? -->
+<!-- Date: 2026-11-12 -->
+<!-- This is a browser stand-in for the Unity prototype in this same folder. -->
+<!-- It mirrors CarController.cs's formulas in hand-written JS so it can be -->
+<!-- played right now, with no Unity install. Browser timing is not a -->
+<!-- substitute for the real Unity feel-test — see README.md. -->
+<title>Underground Lëtzebuerg</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Layout: pit-wall telemetry — dominant track view left, instrument rail right, stacking under 820px */
+  :root{
+    --bg:#eee7d8; --panel:#e4dcc7; --ink:#2a2420; --ink-dim:#6b6253;
+    --ochre:#b5793a; --slate:#45617c; --green:#4a6b43; --asphalt:#34333a;
+    --line:#c9bea3; --accent:#b5793a; --danger:#9c3b2e; --good:#3f7a4f;
+    --font-display:'Space Grotesk',sans-serif; --font-body:'Inter',sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#17140f; --panel:#201c15; --ink:#ece4d3; --ink-dim:#978d78;
+      --ochre:#d79a52; --slate:#7fa0bd; --green:#6f9a63; --asphalt:#0c0b09;
+      --line:#352f24; --accent:#d79a52; --danger:#d9695a; --good:#6fb87f;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#17140f; --panel:#201c15; --ink:#ece4d3; --ink-dim:#978d78;
+    --ochre:#d79a52; --slate:#7fa0bd; --green:#6f9a63; --asphalt:#0c0b09;
+    --line:#352f24; --accent:#d79a52; --danger:#d9695a; --good:#6fb87f;
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--font-body);
+    padding-left:max(16px, env(safe-area-inset-left,0px));
+    padding-right:max(16px, env(safe-area-inset-right,0px));
+  }
+  h1,h2,.num{font-family:var(--font-display)}
+  .tabular{font-variant-numeric:tabular-nums}
+
+  .app{max-width:1180px; margin:0 auto; padding-block:20px 40px;}
+
+  header{display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:14px; border-bottom:2px solid var(--line); padding-bottom:12px}
+  header h1{font-size:clamp(22px,4vw,30px); font-weight:700; letter-spacing:-0.01em; margin:0}
+  header h1 span{color:var(--ochre)}
+  header p{margin:4px 0 0; color:var(--ink-dim); font-size:13px; max-width:46ch}
+  .badge{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-dim); border:1px solid var(--line); border-radius:999px; padding:4px 10px; white-space:nowrap}
+
+  .layout{display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:18px; align-items:start}
+  @media (max-width:820px){ .layout{grid-template-columns:1fr} }
+
+  .stage{position:relative; border-radius:6px; overflow:hidden; border:1px solid var(--line); background:var(--green)}
+  canvas{display:block; width:100%; height:auto; aspect-ratio:4/3}
+
+  .hud{position:absolute; top:12px; left:12px; display:flex; flex-direction:column; gap:6px; pointer-events:none}
+  .hud .tile{background:rgba(23,20,15,.62); color:#f3ecdd; border-radius:4px; padding:6px 10px; font-size:12px; letter-spacing:.03em; display:flex; gap:8px; justify-content:space-between; min-width:168px}
+  .hud .tile b{font-size:15px}
+
+  .startcard{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(12,11,9,.55); backdrop-filter:blur(1px)}
+  .startcard div{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px 22px; max-width:320px; text-align:left}
+  .startcard h2{margin:0 0 8px; font-size:17px}
+  .startcard p{margin:0 0 12px; font-size:13px; color:var(--ink-dim); line-height:1.5}
+  .startcard button{font-family:var(--font-display); font-weight:600; background:var(--ochre); color:#1c1409; border:none; border-radius:5px; padding:9px 16px; font-size:14px; cursor:pointer}
+  .startcard button:hover{filter:brightness(1.08)}
+  .startcard kbd{background:var(--bg); border:1px solid var(--line); border-radius:3px; padding:1px 6px; font-size:12px; font-family:var(--font-body)}
+
+  .rail{display:flex; flex-direction:column; gap:12px; min-width:0}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:14px 16px}
+  .panel h2{font-size:13px; text-transform:uppercase; letter-spacing:.08em; margin:0 0 10px; color:var(--ink-dim)}
+
+  .readout{display:grid; grid-template-columns:1fr auto; gap:6px 10px; font-size:13px}
+  .readout .k{color:var(--ink-dim)}
+  .readout .v{font-weight:600}
+  .readout .v.danger{color:var(--danger)}
+  .readout .v.good{color:var(--good)}
+
+  .slider{margin-bottom:12px}
+  .slider:last-child{margin-bottom:0}
+  .slider label{display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:4px}
+  .slider label .val{color:var(--accent); font-weight:600}
+  .slider input[type=range]{width:100%; accent-color:var(--ochre)}
+  .slider .hint{font-size:11px; color:var(--ink-dim); margin-top:2px; line-height:1.4}
+  .slider.grip label .val{color:var(--danger)}
+
+  .keys{display:grid; grid-template-columns:repeat(3,1fr); gap:6px; font-size:12px; text-align:center}
+  .keys kbd{display:block; background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:6px 0; font-family:var(--font-body)}
+  .resetbtn{width:100%; margin-top:10px; font-family:var(--font-body); font-weight:600; background:transparent; border:1px solid var(--line); color:var(--ink); border-radius:5px; padding:8px; font-size:12.5px; cursor:pointer}
+  .resetbtn:hover{border-color:var(--ochre); color:var(--ochre)}
+
+  footer{margin-top:16px; font-size:12px; color:var(--ink-dim); line-height:1.6; border-top:1px solid var(--line); padding-top:12px}
+  footer code{background:var(--panel); padding:1px 5px; border-radius:3px}
+</style>
+
+<div class="app">
+  <header>
+    <div>
+      <h1>Underground <span>Lëtzebuerg</span></h1>
+      <p>Fahrgefühl-Prototyp — Browser-Vorschau derselben Physik wie im Unity-Prototyp, zum sofortigen Ausprobieren und Tunen.</p>
+    </div>
+    <span class="badge">Grey-box · kein Gameplay-Content</span>
+  </header>
+
+  <div class="layout">
+    <div class="stage" id="stage">
+      <canvas id="view" width="960" height="720"></canvas>
+      <div class="hud">
+        <div class="tile"><span>Speed</span><b class="tabular" id="hud-speed">0 km/h</b></div>
+        <div class="tile"><span>Versuch</span><b class="tabular" id="hud-attempt">1</b></div>
+        <div class="tile"><span>Letzte / Beste Runde</span><b class="tabular" id="hud-laps">— / —</b></div>
+      </div>
+      <div class="startcard" id="startcard">
+        <div>
+          <h2>Teststrecke bereit</h2>
+          <p>Hypothese: schweres, träges Fahrverhalten UND eine erste Runde innerhalb von 3 Versuchen ohne Crash. Teste beides.</p>
+          <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> oder Pfeiltasten zum Fahren, <kbd>R</kbd> zum Reset.</p>
+          <button id="start-btn">Motor starten</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rail">
+      <div class="panel">
+        <h2>Telemetrie</h2>
+        <div class="readout">
+          <span class="k">Rundenzähler</span><span class="v tabular" id="r-laps">0</span>
+          <span class="k">Versuch</span><span class="v tabular" id="r-attempt">1</span>
+          <span class="k">Letzte Runde</span><span class="v tabular" id="r-last">—</span>
+          <span class="k">Bestzeit</span><span class="v tabular good" id="r-best">—</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Steuerung</h2>
+        <div class="keys">
+          <kbd>↑ / W</kbd><kbd>↓ / S</kbd><kbd>R</kbd>
+        </div>
+        <button class="resetbtn" id="reset-btn">Zum Start zurücksetzen</button>
+      </div>
+
+      <div class="panel" id="tuning">
+        <h2>Fahrwerk — live tunen</h2>
+
+        <div class="slider grip">
+          <label>Lateral Grip (Hauptregler) <span class="val" id="v-grip">0.85</span></label>
+          <input type="range" id="grip" min="0" max="1" step="0.01" value="0.85">
+          <div class="hint">1 = klebt am Asphalt (einfach, wenig „Gewicht"). 0 = Glatteis (schwer, kaum kontrollierbar).</div>
+        </div>
+
+        <div class="slider">
+          <label>Masse (kg) <span class="val" id="v-mass">1400</span></label>
+          <input type="range" id="mass" min="400" max="3000" step="50" value="1400">
+        </div>
+
+        <div class="slider">
+          <label>Motorkraft <span class="val" id="v-engine">9000</span></label>
+          <input type="range" id="engine" min="2000" max="20000" step="200" value="9000">
+        </div>
+
+        <div class="slider">
+          <label>Höchstgeschwindigkeit (m/s) <span class="val" id="v-maxspeed">20</span></label>
+          <input type="range" id="maxspeed" min="5" max="40" step="1" value="20">
+        </div>
+
+        <div class="slider">
+          <label>Lenk-Drehmoment <span class="val" id="v-steer">3500</span></label>
+          <input type="range" id="steer" min="500" max="8000" step="100" value="3500">
+        </div>
+
+        <div class="slider">
+          <label>Lenkverlust bei Topspeed <span class="val" id="v-steerloss">0.6</span></label>
+          <input type="range" id="steerloss" min="0" max="1" step="0.05" value="0.6">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Diese Seite ist eine leichte 2D-Draufsicht, in JavaScript nachgebaut aus denselben Formeln wie
+    <code>CarController.cs</code> — zum sofortigen Testen, ohne Unity-Installation. Browser-Timing ist
+    kein Ersatz für den echten Gefühls-Test in der Engine (siehe <code>README.md</code> in diesem Ordner):
+    diese Version validiert nur grob die Tuning-Richtung, nicht das endgültige Fahrgefühl.
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var canvas = document.getElementById('view');
+  var ctx = canvas.getContext('2d');
+
+  // ---- Track geometry (meters), same layout as PrototypeBootstrap.cs ----
+  var TRACK = [
+    {x:-5,  y:-40, w:10,  h:80},   // Straight A
+    {x:115, y:-40, w:10,  h:80},   // Straight B
+    {x:-5,  y:37.5,w:130, h:15},   // Corner — tight
+    {x:-5,  y:-62.5,w:130,h:35}    // Corner — wide
+  ];
+  var FINISH = {x:-5, y:-36, w:10, h:2};
+
+  var PPM = 6; // pixels per meter at zoom 1
+
+  // ---- Tunables (mirrors CarController.cs Inspector fields) ----
+  var tune = {
+    grip: 0.85, mass: 1400, engine: 9000, maxSpeed: 20, steer: 3500, steerLoss: 0.6,
+    brake: 12000, linearDrag: 0.3
+  };
+
+  function bindSlider(id, key, labelId, fmt){
+    var el = document.getElementById(id);
+    var lbl = document.getElementById(labelId);
+    el.addEventListener('input', function(){
+      tune[key] = parseFloat(el.value);
+      lbl.textContent = fmt ? fmt(tune[key]) : tune[key];
+    });
+  }
+  bindSlider('grip','grip','v-grip');
+  bindSlider('mass','mass','v-mass');
+  bindSlider('engine','engine','v-engine');
+  bindSlider('maxspeed','maxSpeed','v-maxspeed');
+  bindSlider('steer','steer','v-steer');
+  bindSlider('steerloss','steerLoss','v-steerloss');
+
+  // ---- Car state ----
+  var START_POS = {x:0, y:-35};
+  var car = { x:START_POS.x, y:START_POS.y, heading:0, vx:0, vy:0 };
+  var attempt = 1, laps = 0, lastLap = -1, bestLap = -1;
+  var attemptStart = performance.now();
+  var lapCooldownUntil = 0;
+  var running = false;
+
+  var keys = {};
+  window.addEventListener('keydown', function(e){
+    keys[e.key.toLowerCase()] = true;
+    if (e.key.toLowerCase() === 'r') resetCar('manuell');
+  });
+  window.addEventListener('keyup', function(e){ keys[e.key.toLowerCase()] = false; });
+
+  function throttleInput(){
+    if (keys['w'] || keys['arrowup']) return 1;
+    if (keys['s'] || keys['arrowdown']) return -1;
+    return 0;
+  }
+  function steerInputFn(){
+    if (keys['a'] || keys['arrowleft']) return -1;
+    if (keys['d'] || keys['arrowright']) return 1;
+    return 0;
+  }
+
+  function resetCar(){
+    car.x = START_POS.x; car.y = START_POS.y; car.heading = 0; car.vx = 0; car.vy = 0;
+    attempt += 1;
+    attemptStart = performance.now();
+    document.getElementById('hud-attempt').textContent = attempt;
+    document.getElementById('r-attempt').textContent = attempt;
+  }
+
+  function step(dt){
+    var throttle = throttleInput();
+    var steerIn = steerInputFn();
+
+    var fwd = { x: Math.sin(car.heading), y: Math.cos(car.heading) };
+    var right = { x: fwd.y, y: -fwd.x };
+
+    var forwardSpeed = car.vx * fwd.x + car.vy * fwd.y;
+    var speedFraction = Math.min(1, Math.abs(forwardSpeed) / tune.maxSpeed);
+
+    var accel = 0;
+    if (throttle > 0) {
+      if (forwardSpeed < tune.maxSpeed) accel = (throttle * tune.engine) / tune.mass;
+    } else if (throttle < 0) {
+      if (forwardSpeed > 0.5) accel = -(tune.brake) / tune.mass;
+      else if (forwardSpeed > -tune.maxSpeed * 0.5) accel = (throttle * tune.engine * 0.5) / tune.mass;
+    }
+    car.vx += fwd.x * accel * dt;
+    car.vy += fwd.y * accel * dt;
+
+    // Steering: a turn-rate model (not literal torque/inertia) — tuned so the
+    // same slider ranges as Unity's CarController feel comparable in a 2D sim.
+    var steerAuthority = 1 - tune.steerLoss * speedFraction;
+    var maxTurnRate = (tune.steer / tune.mass) * 0.7; // rad/s, tuning constant
+    car.heading += steerIn * maxTurnRate * steerAuthority * dt;
+
+    // Lateral grip: cancel a fraction of sideways velocity every step.
+    var vForward = car.vx * fwd.x + car.vy * fwd.y;
+    var vRight = car.vx * right.x + car.vy * right.y;
+    vRight *= (1 - tune.grip);
+    car.vx = fwd.x * vForward + right.x * vRight;
+    car.vy = fwd.y * vForward + right.y * vRight;
+
+    // Linear drag (approximation of Unity's linearDamping).
+    var dragFactor = Math.max(0, 1 - tune.linearDrag * dt);
+    car.vx *= dragFactor; car.vy *= dragFactor;
+
+    // Hard speed cap.
+    var speed = Math.hypot(car.vx, car.vy);
+    var capped = tune.maxSpeed * 1.05;
+    if (speed > capped) { var s = capped / speed; car.vx *= s; car.vy *= s; }
+
+    car.x += car.vx * dt;
+    car.y += car.vy * dt;
+
+    // Finish line crossing (cooldown + minimum-lap-time guarded — the finish
+    // zone sits on top of the start position, so without a minimum elapsed
+    // time a lap would falsely fire the instant the car first moves forward).
+    var now = performance.now();
+    var MIN_LAP_SECONDS = 3;
+    if (now > lapCooldownUntil &&
+        (now - attemptStart) / 1000 > MIN_LAP_SECONDS &&
+        car.y >= FINISH.y && car.y <= FINISH.y + FINISH.h + 2 &&
+        car.x >= FINISH.x - 2 && car.x <= FINISH.x + FINISH.w + 2 &&
+        forwardSpeed > 0) {
+      laps += 1;
+      var lapTime = (now - attemptStart) / 1000;
+      lastLap = lapTime;
+      if (bestLap < 0 || lapTime < bestLap) bestLap = lapTime;
+      attemptStart = now;
+      lapCooldownUntil = now + 4000;
+      document.getElementById('r-laps').textContent = laps;
+      document.getElementById('r-last').textContent = lastLap.toFixed(1) + 's';
+      document.getElementById('r-best').textContent = bestLap.toFixed(1) + 's';
+      document.getElementById('hud-laps').textContent = lastLap.toFixed(1) + 's / ' + bestLap.toFixed(1) + 's';
+    }
+
+    return { speedKmh: Math.abs(forwardSpeed) * 3.6 };
+  }
+
+  // ---- Camera (follows car, fixed north-up orientation) ----
+  var cam = { x: car.x, y: car.y };
+
+  function worldToScreen(wx, wy){
+    var cx = canvas.width / 2, cy = canvas.height / 2;
+    return { x: cx + (wx - cam.x) * PPM, y: cy - (wy - cam.y) * PPM };
+  }
+
+  function draw(){
+    ctx.fillStyle = getToken('--green');
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = getToken('--asphalt');
+    TRACK.forEach(function(seg){
+      var corners = [
+        worldToScreen(seg.x, seg.y),
+        worldToScreen(seg.x + seg.w, seg.y),
+        worldToScreen(seg.x + seg.w, seg.y + seg.h),
+        worldToScreen(seg.x, seg.y + seg.h)
+      ];
+      ctx.beginPath();
+      ctx.moveTo(corners[0].x, corners[0].y);
+      for (var i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+      ctx.closePath();
+      ctx.fill();
+    });
+
+    // Finish line — checker-ish stripe.
+    var f1 = worldToScreen(FINISH.x, FINISH.y);
+    var f2 = worldToScreen(FINISH.x + FINISH.w, FINISH.y + FINISH.h);
+    ctx.fillStyle = '#f3ecdd';
+    ctx.fillRect(Math.min(f1.x,f2.x), Math.min(f1.y,f2.y), Math.abs(f2.x-f1.x), Math.max(3,Math.abs(f2.y-f1.y)));
+
+    // Car.
+    var p = worldToScreen(car.x, car.y);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(-car.heading);
+    ctx.fillStyle = getToken('--danger');
+    ctx.fillRect(-1.8*PPM*0.5, -4*PPM*0.5, 1.8*PPM, 4*PPM);
+    ctx.restore();
+  }
+
+  function getToken(name){
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  var lastT = null;
+  function loop(t){
+    if (lastT == null) lastT = t;
+    var dt = Math.min(0.033, (t - lastT) / 1000);
+    lastT = t;
+    if (running){
+      var r = step(dt);
+      cam.x += (car.x - cam.x) * Math.min(1, dt * 6);
+      cam.y += (car.y - cam.y) * Math.min(1, dt * 6);
+      document.getElementById('hud-speed').textContent = Math.round(r.speedKmh) + ' km/h';
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  document.getElementById('start-btn').addEventListener('click', function(){
+    running = true;
+    document.getElementById('startcard').hidden = true;
+    attemptStart = performance.now();
+  });
+  document.getElementById('reset-btn').addEventListener('click', function(){ resetCar(); });
+
+  function fitCanvas(){
+    var rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = Math.round(rect.width);
+    canvas.height = Math.round(rect.width * 3 / 4);
+  }
+  window.addEventListener('resize', fitCanvas);
+  fitCanvas();
+  requestAnimationFrame(loop);
+})();
+</script>

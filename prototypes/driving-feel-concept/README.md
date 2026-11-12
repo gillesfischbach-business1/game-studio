@@ -116,11 +116,23 @@ Paste your answers back and I'll adjust the controller and we'll iterate —
 2 to 4 rounds of this is normal for an Engine-path prototype, not a sign
 something is broken.
 
+## Browser preview (not a substitute for the real test)
+
+`browser-preview.html` in this same folder is a lightweight 2D top-down
+stand-in, hand-written in JS from the same formulas as `CarController.cs`,
+so the tuning direction can be tried immediately with no Unity install —
+exactly the kind of thing the Engine-path write-up above says a browser
+can't validate reliably (timing/feel). Use it to get a rough first sense of
+the grip/mass/steering tuning while Unity is being set up; treat the real
+Unity build above as the only result this prototype's hypothesis can
+actually be decided on.
+
 ## Status
 
-**In progress.** Code written, not yet run or played by the user (this
-cloud session cannot run the Unity Editor itself). Waiting on the first
-playtest report.
+**In progress.** Unity code written, not yet run or played by the user
+(this cloud session cannot run the Unity Editor itself). The browser
+preview has been built and can be tried immediately. Waiting on the first
+playtest report from either.
 
 ## Findings
 
