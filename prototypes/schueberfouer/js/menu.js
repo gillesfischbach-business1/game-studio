@@ -71,8 +71,10 @@ export class Menu {
         <nav class="pm-tabs">${tabs.map(([k, l]) => `<button data-t="${k}" class="${k === tab ? 'on' : ''}">${l}</button>`).join('')}</nav>
         <div class="pm-info"><span>${G.day.date}</span><span>${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}</span><span>∞ € · ausgi ${euro(G.game.spent)}</span></div></header>
       <main class="pm-body" id="pmbody"></main>
+      <button class="pm-close" id="pmclose" aria-label="Zou">✕</button>
       <footer class="pm-foot"><span><kbd>Esc</kbd> ${fromTitle ? 'Zréck' : 'Weiderspillen'}</span><span><kbd>←</kbd><kbd>→</kbd> Reiter</span><span><kbd>Klick</kbd> Wielen</span></footer>`;
     root.querySelectorAll('.pm-tabs button').forEach(b => b.onclick = () => { G.audio.click(); this.openPause(b.dataset.t, fromTitle); });
+    $('#pmclose').onclick = () => this.close(); root.querySelector('.pm-tabs .on')?.scrollIntoView?.({ inline: 'center', block: 'nearest' });
     ui.menuCam = null;
     const body = $('#pmbody');
     ({ kaart: () => this.mapTab(body), missiounen: () => this.missionTab(body), garderob: () => this.wardTab(body), statistik: () => this.statTab(body), optiounen: () => this.optTab(body), spill: () => this.gameTab(body) })[tab]();
@@ -209,6 +211,7 @@ export class Menu {
     const kr = $('#kreset'); if (kr) kr.onclick = () => { S.keys = structuredClone(DEFAULTS.keys); G.saveSettings(); this.optTab(body); };
   }
   onKey(e) {
+    if (!this.ui.started && !this.ui.menuOpen && e.code === 'Escape') { const sub = $('#tlsub'); if (sub && sub.innerHTML.trim()) { sub.innerHTML = ''; document.querySelectorAll('#tlnav button').forEach(x => x.classList.remove('on')); return true; } }
     if (this.capture) { if (e.code !== 'Escape') this.capture(e.code); else { this.capture = null; this.openPause(this.tab, this.fromTitle); } return true; }
     if (!this.ui.menuOpen) return false;
     if (e.code === 'Escape') { this.close(); return true; }

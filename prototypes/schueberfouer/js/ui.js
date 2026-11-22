@@ -37,7 +37,7 @@ export class UI {
   }
   applyHud() {
     const S = this.G.settings, K = S.keys, n = c => c.replace(/^Key/, '').replace('ShiftLeft', 'Shift').replace('Space', 'Space');
-    $('#minimap').style.display = S.hudMini ? '' : 'none'; this.el.mission.style.display = S.hudMission ? '' : 'none'; $('#keys').style.display = S.hudKeys ? '' : 'none'; $('#fps').style.display = S.showFps ? '' : 'none';
+    $('#minimap').style.display = S.hudMini ? '' : 'none'; this.el.mission.style.display = S.hudMission ? '' : 'none'; $('#keys').style.display = S.hudKeys && !this.G.isMobile ? '' : 'none'; $('#fps').style.display = S.showFps ? '' : 'none';
     $('#keys').innerHTML = [[K.act, 'Aktioun'], [K.compass, 'Kompass'], [K.map, 'Kaart'], [K.journal, 'Missiounen'], [K.wardrobe, 'Garderob'], [K.view, 'Kamera'], [K.photo, 'Foto'], ['Esc', 'Menü']].map(([k, l]) => `<span><kbd>${n(k)}</kbd>${l}</span>`).join('');
   }
   loading(p, t) { const l = $('#loading'); if (!l) return; $('.bar i', l).style.width = (p * 100) + '%'; $('p', l).textContent = t; if (p >= 1) setTimeout(() => l.classList.add('gone'), 300); }
