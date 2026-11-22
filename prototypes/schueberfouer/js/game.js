@@ -330,7 +330,7 @@ export class Game {
     // Mitternacht im Riesenrad
     if (P.ride?.id === 'riesenrad' && Math.floor(G.minutes) % 1440 === 0) this.egg('mitternacht');
     // Feuerwerk am letzten Tag
-    if (G.day?.fireworks && G.minutes >= G.day.fireworks && G.minutes < G.day.fireworks + 8) { this.fw.active = true; if (G.minutes > G.day.fireworks + 1) this.egg('feier'); } else this.fw.active = false;
+    if (G.day?.fireworks && G.minutes >= G.day.fireworks && G.minutes < G.day.fireworks + 8) { this.fw.active = true; if (G.minutes > G.day.fireworks + 1) this.egg('feier'); } else this.fw.active = false; G.audio.fireworksBed?.(this.fw.active);
     this.fw.update(dt);
     // Konami-Regen
     if (this.rain) this.updateRain(dt);

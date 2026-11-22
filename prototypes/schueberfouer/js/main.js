@@ -78,7 +78,7 @@ async function boot() {
   const pmrem = new THREE.PMREMGenerator(renderer);
   G.env = {};
   for (const k of ['day', 'night']) new THREE.TextureLoader().load(`assets/tex/env_${k}.jpg`, (t) => { t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace; G.env[k] = pmrem.fromEquirectangular(t).texture; t.dispose(); });
-  const hemi = new THREE.HemisphereLight('#bcd4ff', '#3a3226', 0.6); scene.add(hemi);
+  const hemi = new THREE.HemisphereLight('#bcd4ff', '#5a5650', 0.6); scene.add(hemi);
   const sun = new THREE.DirectionalLight('#ffffff', 1); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
   Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 400 });
   scene.add(sun, sun.target);
@@ -194,19 +194,21 @@ function applyTime(dt) {
   su.wDay.value = wd / sum; su.wDusk.value = wk / sum; su.wNight.value = wn / sum; su.overcast.value = ov * 0.85; su.t.value = G.time; su.rot.value = -az / (Math.PI * 2) + 0.2 + (G.cloudDrift || 0); G.sunDir = sd;
   su.horizon.value.set('#7d8a96').lerp(_c2.set('#ff9a62'), dusk * 0.5).lerp(_c2.set('#0c0d1a'), night);
   G.scene.fog.color.copy(su.horizon.value).lerp(_c2.set('#8a8f96'), ov * (1 - night) * 0.6);
-  G.scene.fog.density = lerp(0.0014, 0.0022, night) * (1 + ov * 1.4) / S.drawDist;
+  G.scene.fog.density = lerp(0.0019, 0.0022, night) * (1 + ov * 1.4) / S.drawDist;
   const sunI = Math.max(0, elev) * 2.8 * (1 - ov * 0.7); G.sun.intensity = night > 0.5 ? 0.3 : sunI + 0.05;
   G.sun.color.set(night > 0.5 ? '#8fa6ff' : '#fff1dc').lerp(_c2.set('#ff8c4a'), dusk * 0.6);
   const P = G.player?.pos || new THREE.Vector3();
   const lightDir = night > 0.5 ? new THREE.Vector3(-0.4, 0.8, -0.5).normalize() : sd;
   G.sun.position.set(P.x + lightDir.x * 150, Math.max(25, lightDir.y * 150), P.z + lightDir.z * 150); G.sun.target.position.set(P.x, 0, P.z);
-  G.hemi.intensity = lerp(0.55, 0.18, night) * (1 - ov * 0.2); G.hemi.color.set('#bcd4ff').lerp(_c2.set('#4b4f8a'), night);
+  // Nachts hellen tausende Lampen die Fouer auf: warmes Streulicht vom Boden, im Gelände stärker als draußen
+  const fairLit = night * (G.audio?.inFair ?? 0.8);
+  G.hemi.intensity = (lerp(0.55, 0.2, night) + fairLit * 0.12) * (1 - ov * 0.2); G.hemi.color.set('#bcd4ff').lerp(_c2.set('#4b4f8a'), night); G.hemi.groundColor.set('#5a5650').lerp(_c2.set('#7a5232'), fairLit);
   const env = night > 0.5 ? G.env.night : G.env.day; if (env && G.scene.environment !== env) G.scene.environment = env;
   G.scene.environmentIntensity = night > 0.5 ? lerp(0.25, 0.45, ov) : lerp(1.0, 0.7, ov) * (0.35 + 0.65 * Math.max(0.2, 1 - dusk * 0.6));
   G.renderer.toneMappingExposure = lerp(0.9, 1.0, night) * S.exposure;
   if (G.bloom) { G.bloom.strength = lerp(0.18, 0.62, night) * S.bloom; G.bloom.threshold = lerp(0.97, 0.88, night); G.bloom.radius = 0.28; }
   bulbUniforms.uOn.value = lerp(0.6, 1, night);
-  if (G.glowMat) G.glowMat.opacity = lerp(0.05, 0.42, night) * (1 - wetUniform.value * 0.35);
+  if (G.glowMat) G.glowMat.opacity = lerp(0.04, 0.56, night) * (1 - wetUniform.value * 0.35);
   if (!G._nightMats) { G._nightMats = []; G.scene.traverse(o => { if (o.material?.userData?.night && !G._nightMats.includes(o.material)) G._nightMats.push(o.material); }); }
   for (const mt of G._nightMats) mt.emissiveIntensity = night * 0.9;
   if (G.gatePanelMat) G.gatePanelMat.emissiveIntensity = 0.05 + night * 0.3;
