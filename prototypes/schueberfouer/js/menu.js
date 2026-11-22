@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { DAYS, TIME, CLOTHES, SOUVENIRS, GLACIS_POLY, TRAM, ENTRANCES, RESTAURANTS, L } from './data.js';
 import { OPTION_PAGES, KEY_LABELS, PRESETS, DEFAULTS } from './settings.js';
 import { MISSIONS, EGGS } from './game.js';
-import { euro } from './util.js';
+import { euro, keyText } from './util.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -114,7 +114,7 @@ export class Menu {
     const M = vis.find(m => m.id === sel);
     body.innerHTML = `<div class="pm-cols"><div class="pm-list">${vis.map(m => `<button data-id="${m.id}" class="${m.id === sel ? 'on' : ''} ${g.done.has(m.id) ? 'done' : ''}"><span>${g.done.has(m.id) ? '✔' : g.active === m.id ? '◆' : '○'}</span>${esc(m.title)}</button>`).join('')}
       <h3>Easter Eggs ${g.eggs.size}/${Object.keys(EGGS).length}</h3><div class="pm-eggs">${Object.entries(EGGS).map(([k, e]) => `<span class="${g.eggs.has(k) ? 'on' : ''}" title="${g.eggs.has(k) ? esc(e.d) : ''}">${g.eggs.has(k) ? esc(e.t) : '???'}</span>`).join('')}</div></div>
-      <div class="pm-detail"><h2>${esc(M.title)}</h2><p>${esc(M.desc)}</p><ul class="pm-steps">${M.steps.map((s, i) => `<li class="${g.prog[M.id + ':' + i] === true ? 'ok' : ''}">${esc(s[2])}</li>`).join('')}</ul><p class="pm-rew">Belounung: ${esc(M.reward)}</p>
+      <div class="pm-detail"><h2>${esc(M.title)}</h2><p>${esc(keyText(M.desc))}</p><ul class="pm-steps">${M.steps.map((s, i) => `<li class="${g.prog[M.id + ':' + i] === true ? 'ok' : ''}">${esc(s[2])}</li>`).join('')}</ul><p class="pm-rew">Belounung: ${esc(M.reward)}</p>
       ${g.done.has(M.id) ? '<p class="pm-ok">Erfëllt ✔</p>' : `<button class="pm-cta" id="track">${g.active === M.id ? 'Gëtt verfollegt' : 'Missioun verfollegen'}</button>`}</div></div>`;
     body.querySelectorAll('.pm-list button').forEach(b => b.onclick = () => { this.selMission = b.dataset.id; this.missionTab(body); });
     const t = $('#track'); if (t) t.onclick = () => { g.active = M.id; g.save(); this.ui.refreshMission(); this.missionTab(body); };

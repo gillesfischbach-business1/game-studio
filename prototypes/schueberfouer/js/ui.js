@@ -1,6 +1,6 @@
 // Benutzeroberfläche: Startmenü, HUD, Minikarte, Menüs, Mini-Spiele, Touch-Steuerung
 import { FOOD, DRINKS, CLOTHES, SOUVENIRS, DAYS, GLACIS_POLY, ROADS, TRAM, RIDES, ENTRANCES, L, toLocal, RESTAURANTS, TIME } from './data.js';
-import { euro, clamp, R, pick } from './util.js';
+import { euro, clamp, R, pick, keyText } from './util.js';
 import { MISSIONS, EGGS } from './game.js';
 import { Menu } from './menu.js';
 import { KEY_LABELS } from './settings.js';
@@ -76,7 +76,7 @@ export class UI {
   }
   closeAll() { document.body.classList.remove('menu-open'); this.el.overlay.className = 'hidden'; this.el.overlay.innerHTML = ''; this.modal = null; this.menuOpen = false; this.mini = null; if (this.onClose) { const f = this.onClose; this.onClose = null; f(); } }
   fade(cb) { const f = this.el.fade; f.classList.add('on'); setTimeout(() => { cb(); setTimeout(() => f.classList.remove('on'), 250); }, 380); }
-  toast(t, s = '') { const e = h('div', 'toast', `<b>${t}</b><span>${s}</span>`); this.el.toasts.prepend(e); setTimeout(() => e.classList.add('out'), 4200); setTimeout(() => e.remove(), 4800); while (this.el.toasts.children.length > 4) this.el.toasts.lastChild.remove(); }
+  toast(t, s = '') { const e = h('div', 'toast', `<b>${keyText(t)}</b><span>${keyText(s)}</span>`); this.el.toasts.prepend(e); setTimeout(() => e.classList.add('out'), 4200); setTimeout(() => e.remove(), 4800); while (this.el.toasts.children.length > 4) this.el.toasts.lastChild.remove(); }
   achievement(t, s) { const e = h('div', 'ach', `<div class="medal">★</div><div><b>${t}</b><span>${s}</span></div>`); document.body.appendChild(e); setTimeout(() => e.classList.add('out'), 5000); setTimeout(() => e.remove(), 5800); }
   money(a, what) { const e = h('div', 'money', `−${euro(a)}`); this.el.hud.appendChild(e); setTimeout(() => e.remove(), 1500); }
   prompt(text) { const p = this.el.prompt; if (!text || !this.G.settings.hudPrompt) { p.classList.remove('on'); return; } p.innerHTML = `<kbd>${this.G.isMobile ? 'E' : 'E'}</kbd> ${text}`; p.classList.add('on'); }
@@ -100,8 +100,8 @@ export class UI {
       <div class="opts"><button class="go">🎟️ Fueren – ${G.game.freeTickets ? 'Gratis-Ticket' : euro(pr)}</button>${c.type === 'breakdance' ? '<button class="op">🎛️ Als Operateur bedéngen</button>' : ''}${done ? '<small>✓ schonn gefuer</small>' : ''}</div>`, { cls: 'ride' });
     $('.go', o).onclick = () => G.game.startRide(ride); const op = $('.op', o); if (op) op.onclick = () => G.game.startRide(ride, true);
   }
-  rideHud(ride) { this.curRide = ride; this.el.rideHud.classList.toggle('on', !!ride); if (ride) this.el.rideHud.innerHTML = `<b>${ride.name}</b><span id="rideInfo">${ride.cfg.type === 'scooter' ? 'WASD fueren – bomp se all!' : 'Genéiss d\'Fahrt! [V] Kamera · Maus kucken'}${ride.cfg.type === 'ferris' ? ' · uewen [P] Foto!' : ''}</span>`; }
-  rideInfo(t) { const e = $('#rideInfo'); if (e) e.textContent = t; }
+  rideHud(ride) { this.curRide = ride; this.el.rideHud.classList.toggle('on', !!ride); if (ride) this.el.rideHud.innerHTML = `<b>${ride.name}</b><span id="rideInfo">${keyText((ride.cfg.type === 'scooter' ? 'WASD fueren – bomp se all!' : 'Genéiss d\'Fahrt! [V] Kamera · Maus kucken') + (ride.cfg.type === 'ferris' ? ' · uewen [P] Foto!' : ''))}</span>`; }
+  rideInfo(t) { const e = $('#rideInfo'); if (e) e.textContent = keyText(t); }
 
   // ---------------- Mini-Spiele ----------------
   openGame(kind, stall) {
@@ -173,7 +173,7 @@ export class UI {
   // ---------------- Menüs ----------------
   journal() {
     const G = this.G; const g = G.game; const vis = MISSIONS.filter(m => !m.hidden || g.prog[m.id + ':seen'] || g.done.has(m.id));
-    const o = this.open(`<h2>Missiounen</h2><div class="miss">${vis.map(m => `<div class="m ${g.done.has(m.id) ? 'done' : ''} ${g.active === m.id ? 'act' : ''}" data-id="${m.id}"><b>${g.done.has(m.id) ? '✅' : g.active === m.id ? '▶' : '○'} ${m.title}</b><p>${m.desc}</p><ul>${m.steps.map((s, i) => `<li class="${g.prog[m.id + ':' + i] === true ? 'ok' : ''}">${s[2]}${g.prog[m.id + i] && g.prog[m.id + ':' + i] !== true ? ` (${g.prog[m.id + i]}/${s[1]})` : ''}</li>`).join('')}</ul><small>Belounung: ${m.reward}</small></div>`).join('')}</div>
+    const o = this.open(`<h2>Missiounen</h2><div class="miss">${vis.map(m => `<div class="m ${g.done.has(m.id) ? 'done' : ''} ${g.active === m.id ? 'act' : ''}" data-id="${m.id}"><b>${g.done.has(m.id) ? '✅' : g.active === m.id ? '▶' : '○'} ${m.title}</b><p>${keyText(m.desc)}</p><ul>${m.steps.map((s, i) => `<li class="${g.prog[m.id + ':' + i] === true ? 'ok' : ''}">${s[2]}${g.prog[m.id + i] && g.prog[m.id + ':' + i] !== true ? ` (${g.prog[m.id + i]}/${s[1]})` : ''}</li>`).join('')}</ul><small>Belounung: ${m.reward}</small></div>`).join('')}</div>
       <h3>Easter Eggs (${g.eggs.size}/${Object.keys(EGGS).length})</h3><div class="eggs">${Object.entries(EGGS).map(([k, e]) => `<span class="${g.eggs.has(k) ? 'on' : ''}">${g.eggs.has(k) ? '🥚 ' + e.t : '🔒 ???'}</span>`).join('')}</div>
       <p class="sub">Klick op eng Missioun fir se ze verfollegen.</p>`, { cls: 'journal' });
     o.querySelectorAll('.m').forEach(e => e.onclick = () => { if (g.done.has(e.dataset.id)) return; g.active = e.dataset.id; g.save(); this.refreshMission(); this.closeAll(); this.toast('▶ Aktiv Missioun', MISSIONS.find(m => m.id === g.active).title); });

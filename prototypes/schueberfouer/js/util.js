@@ -200,3 +200,14 @@ export function pointInPoly(x, z, poly) {
     if (((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi)) inside = !inside; }
   return inside;
 }
+
+// Tasten-Hinweise für Touch-Geräte umschreiben: "[Q]" -> Kompass-Knopf usw.
+const TOUCH_KEYS = { Q: '🧭', E: 'E-Knäppchen', P: '📷', V: '👁', M: '🗺', J: '★', I: '☰', Esc: '☰' };
+export function keyText(s) {
+  if (!s || !(window.G && window.G.isMobile)) return s;
+  return String(s)
+    .replace(/\[(Esc|[A-Z])\]/g, (m, k) => TOUCH_KEYS[k] ? `[${TOUCH_KEYS[k]}]` : m)
+    .replace(/WASD fueren/g, 'Joystick fueren')
+    .replace(/ · Maus kucken/g, ' · wësch fir ze kucken')
+    .replace(/\(Shift = lafen\)/g, '(Joystick ganz no baussen = lafen)');
+}
