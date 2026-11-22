@@ -5,7 +5,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { L, LANES, RESTAURANTS, RESTO_ROW, GATE, PARK_POLY } from './data.js';
 import { Bulbs, R, rand, pick, pointInPoly, distSeg } from './util.js';
 
-const FILES = ['street_lamp_01', 'painted_wooden_bench', 'metal_trash_can', 'wooden_barrels_01', 'wine_barrel_01', 'planter_box_01', 'CoffeeCart_01', 'caged_hanging_light', 'Lantern_01', 'plastic_crate_01'];
+const FILES = ['street_lamp_01', 'painted_wooden_bench', 'metal_trash_can', 'wooden_barrels_01', 'wine_barrel_01', 'planter_box_01', 'CoffeeCart_01', 'caged_hanging_light'];
 
 export async function loadProps() {
   const loader = new GLTFLoader(); const out = {};
@@ -62,7 +62,7 @@ export function placeProps(G, P) {
   // Hängelampen & Laternen in den Restaurants
   const hang = [], lant = [];
   for (const r0 of RESTAURANTS) { for (const du of [-4, 0, 4]) hang.push({ x: r0.u + du, y: 4.0, z: RESTO_ROW.v, ry: 0 }); for (let x = -RESTO_ROW.w / 2 + 2.2; x < RESTO_ROW.w / 2 - 3.5; x += 3.2) lant.push({ x: r0.u + x, y: 0.81, z: RESTO_ROW.v - 1.1, ry: R(0, 6) }); }
-  instance(scene, fr, P.caged_hanging_light, hang, { cast: false }); instance(scene, fr, P.Lantern_01, lant, { cast: false });
+  instance(scene, fr, P.caged_hanging_light, hang, { cast: false });
   const fb = new Bulbs(); for (const h of hang) fb.add(h.x, h.y - 0.45, h.z, '#ffd59a', 0, 0, 3.5); for (const l of lant) fb.add(l.x, l.y + 0.13, l.z, '#ffb347', Math.random(), 2, 2.6); fb.build(fr, 1.2);
   // Kaffeewagen am Haaptentrée
   const cc = { x: GATE.u - 12, z: GATE.v - 6.5, ry: Math.PI * 0.85 }; instance(scene, fr, P.CoffeeCart_01, [cc]); G.fairBox(cc.x, cc.z, 1.4, 0.7, cc.ry);

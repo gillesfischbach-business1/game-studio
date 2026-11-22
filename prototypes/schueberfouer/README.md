@@ -78,6 +78,16 @@ eine Unity-Version einfließen (Regel: Prototyp-Code wird nicht migriert, sonder
 - **Cloud Gaming (Beta):** WHEP/WebRTC-Client (`js/cloud.js`) im Optionsmenü; Eingaben per DataChannel. Plan: `docs/architecture/ADR-0001-cloud-rendering.md`. Funktioniert nur bei eigenem Hosting (Artifact-Sicherheitsrichtlinie blockiert fremde Server).
 - **Welt-Export für Unity/Unreal/Blender:** `node tools/export-world.mjs` erzeugt `exports/layout.json` und eine GLB, die anschließend mit gltf-transform komprimiert wird (`exports/schueberfouer_world.glb`, meshopt, 3,2 MB, glTF-Validator ohne Fehler). Böden/Fassaden tragen Materialnamen `PH_<set>`, damit die Engine die Poly-Haven-Materialien zuweisen kann. Vorschau: `tools/preview-export.html`.
 
+## Version 0.4 – Flüssiger Spielverlauf (Performance)
+Gemessen im Test-Browser (Nacht, Mittelallee, Preset „Héich“, alle Render-Durchgänge zusammen):
+
+| Messwert pro Bild | v0.3 | v0.4 |
+|---|---|---|
+| Draw-Calls | 3.869 | ~1.370 (Hauptbild allein ~500) |
+| Dreiecke | 10,3 Mio. | ~3,0 Mio. |
+
+Maßnahmen: räumlich gebündelte statische Geometrie (Frustum-Culling greift), Spiegelung rendert nur Lichter/Schilder/Fahrgeschäfte (Layer 1), Schatten nur bei Bewegung bzw. alle 3–8 Bilder, Detailstufen für die Menschenmenge (Sichtweite, seltenere Updates in der Ferne, leichtere Geometrie), instanzierte Autos/Mitfahrer/Karussellpferde, Hausfassaden in 3 statt 40 Materialien, vereinfachte Laternen/Fässer, kleinerer Licht-Pool, dynamische Auflösung (Ziel 60 FPS) und optionales 30/60-FPS-Limit.
+
 ## Dateien
 `index.html` (lokal), `artifact.html` (veröffentlichte Variante), `js/data.js` (alle
 Spieldaten), `js/world.js`, `js/fair.js`, `js/rides.js`, `js/npc.js`, `js/player.js`,

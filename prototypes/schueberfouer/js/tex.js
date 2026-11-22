@@ -39,7 +39,7 @@ export function pbr(set, o = {}) {
     normalScale: new THREE.Vector2(o.normalScale ?? 1, o.normalScale ?? 1),
     side: o.side ?? THREE.FrontSide, transparent: !!o.transparent, opacity: o.opacity ?? 1,
     emissive: o.emissive ?? '#000000', emissiveIntensity: o.emissiveIntensity ?? 1, emissiveMap: o.emissiveMap ?? null,
-    envMapIntensity: o.envMapIntensity ?? 1,
+    envMapIntensity: o.envMapIntensity ?? 1, vertexColors: !!o.vertexColors,
   });
   m.userData.tile = o.tile ?? 2; m.userData.set = set; m.userData.wet = o.wet ?? 0;
   worldProject(m, o.tile ?? 2, o.windowMap, o.plane, o.reflect);

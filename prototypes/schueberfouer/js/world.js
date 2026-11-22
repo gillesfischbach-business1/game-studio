@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { ROADS, TRAM, GLACIS_POLY, THEATRE_POLY, CEMETERY_POLY, BRIDGE, PARK_POLY } from './data.js';
 import { Batcher, Bulbs, M, Glow, R, RI, pick, rand, canvasTex, noiseTex, signTex, distSeg, pointInPoly, clamp } from './util.js';
 import { pbr } from './tex.js';
+import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 
 export function buildWorld(G) {
   const { scene, colliders } = G;
@@ -131,7 +132,7 @@ export function buildWorld(G) {
 
   // ---------------- Häuser (prozedural, aber außerhalb Straßen / Glacis / Theater) ----------------
   const facadeColors = ['#f3e7cf', '#ead6b5', '#e2cba6', '#f6f1e6', '#d6c4a4', '#efe0cb', '#d0d6d8', '#e4d7c3', '#f0e5d0', '#d8bf96'];
-  const facTex = facadeColors.map(c => makeFacade(c));
+  const facTex = [0, 1, 2].map(i => makeFacade(facadeColors[i]));
   const roofMat = pbr('roof', { tile: 2.5, color: '#9aa0a8', roughness: 0.9 });
   const nearRoad = (x, z, pad) => { for (const s of G.roadSegs) if (distSeg(x, z, s.a[0], s.a[1], s.b[0], s.b[1]) < s.w / 2 + pad) return s; return null; };
   const roadDir = (x, z) => { let best = null, bd = 1e9; for (const s of G.roadSegs) { const d = distSeg(x, z, s.a[0], s.a[1], s.b[0], s.b[1]); if (d < bd) { bd = d; best = s; } } return best ? Math.atan2(-(best.b[1] - best.a[1]), best.b[0] - best.a[0]) : 0; };
@@ -157,9 +158,9 @@ export function buildWorld(G) {
     const ang = roadDir(x, z);
     const w = R(11, 16), d = R(10, 14), floors = RI(3, 6), h = floors * 3.2 + 1;
     const office = (z > 150 || x > 150) && rand() < 0.5;
-    const ci = RI(0, facTex.length - 1);
-    const mat = office ? officeMat() : facadeMat(facTex[ci], w, h, facadeColors[ci]);
-    B.add(new THREE.BoxGeometry(w, h, d), mat, x, h / 2, z, 0, ang);
+    const ci = RI(0, facadeColors.length - 1);
+    const mat = office ? officeMat() : facadeMat(facTex[ci % 3]);
+    B.add(office ? new THREE.BoxGeometry(w, h, d) : facadeBox(w, h, d, floors, facadeColors[ci]), mat, x, h / 2, z, 0, ang);
     if (!office) { // Mansarddach (typisch Limpertsberg)
       const roof = new THREE.CylinderGeometry(0.7, 1, 1, 4, 1); roof.rotateY(Math.PI / 4);
       B.add(roof, roofMat, x, h + 1.6, z, 0, ang, 0, w * 0.74, 3.2, d * 0.74);
@@ -169,7 +170,7 @@ export function buildWorld(G) {
     placed.push([x, z]); G.buildings.push({ x, z, w, d, h, ang });
   }
   // Das weiße Haus neben dem Tor (vgl. Foto vom Tor 2026)
-  B.add(new THREE.BoxGeometry(14, 9, 11), facadeMat(facTex[3], 14, 9, '#ffffff'), 92, 4.5, -72, 0, 0.65);
+  B.add(facadeBox(14, 9, 11, 3, '#ffffff'), facadeMat(facTex[0]), 92, 4.5, -72, 0, 0.65);
   const hip = new THREE.ConeGeometry(10, 5, 4, 1); hip.rotateY(Math.PI / 4);
   B.add(hip, roofMat, 92, 11.5, -72, 0, 0.65, 0, 1, 1, 0.8);
   colliders.box(92, -72, 7.2, 5.7, 0.65);
@@ -221,16 +222,18 @@ export function buildWorld(G) {
   const carCols = ['#1b1b1b', '#e0e0e0', '#8a8f96', '#1d3557', '#9b2226', '#2a2a2a', '#f1f1f1', '#344e41'];
   const drivable = ROADS.filter(r => r.pts && !r.name.includes('Allée Scheffer (Nord)'));
   for (let i = 0; i < 26; i++) {
-    const r = drivable[i % drivable.length]; const car = makeCar(pick(carCols)); scene.add(car);
+    const r = drivable[i % drivable.length]; const car = { position: new THREE.Vector3(), rotation: { y: 0 }, color: pick(carCols) };
     let lens = [], tot = 0; for (let k = 0; k < r.pts.length - 1; k++) { const l = Math.hypot(r.pts[k + 1][0] - r.pts[k][0], r.pts[k + 1][1] - r.pts[k][1]); lens.push(l); tot += l; }
     G.cars.push({ mesh: car, pts: r.pts, lens, tot, s: R(0, tot), v: R(7, 12), dir: rand() < 0.5 ? 1 : -1, lane: R(1.8, 2.6) });
   }
   // Geparkte Autos am Straßenrand
   for (const s of G.roadSegs) { const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1], len = Math.hypot(dx, dz); if (len < 30 || s.name.startsWith('Rond') || s.name.startsWith('Boulevard')) continue; const nx = -dz / len, nz = dx / len, ang = Math.atan2(-dz, dx);
     for (let t = 8; t < len - 8; t += 6.5) { if (rand() < 0.45) continue; const x = s.a[0] + dx / len * t + nx * (s.w / 2 - 1.1), z = s.a[1] + dz / len * t + nz * (s.w / 2 - 1.1); if (x > 360 || pointInPoly(x, z, GLACIS_POLY)) continue;
-      const c = makeCar(pick(carCols)); c.position.set(x, 0, z); c.rotation.y = ang; c.matrixAutoUpdate = false; c.updateMatrix(); scene.add(c); colliders.box(x, z, 2.2, 0.95, ang, 'car'); } }
+      B.at(x, 0, z, ang); for (const [geo, mat] of carParts(pick(carCols))) B.add(geo, mat); B.at(null); colliders.box(x, z, 2.2, 0.95, ang, 'car'); } }
+  // Fahrende Autos: instanziert (5 Draw-Calls für alle)
+  G.carIM = carInstances(scene, G.cars);
 
-  B.build(scene, { receive: true });
+  B.build(scene, { receive: true, cell: 120 });
   bulbs.build(scene);
 }
 
@@ -263,12 +266,16 @@ function makeFacade(color) {
   const te = new THREE.CanvasTexture(em); te.colorSpace = THREE.SRGBColorSpace; te.wrapS = te.wrapT = THREE.RepeatWrapping;
   return { t, te };
 }
-function facadeMat(ft, w, h, color) {
-  const floors = Math.max(1, Math.round(h / 3.2));
-  const key = ft.t.id + '_' + floors + color;
+/** Hausquader: Fenster-UVs nach Stockwerken skaliert, Fassadenfarbe als Vertex-Farbe -> 1 Material für viele Häuser */
+function facadeBox(w, h, d, floors, color) {
+  const g = new THREE.BoxGeometry(w, h, d); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 3, uv.getY(i) * floors / 4);
+  const c = new THREE.Color(color); const col = new Float32Array(g.attributes.position.count * 3); for (let i = 0; i < col.length; i += 3) { col[i] = c.r; col[i + 1] = c.g; col[i + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
+}
+function facadeMat(ft) {
+  const key = ft.t.id;
   if (!facCache.has(key)) {
-    const te = ft.te.clone(); te.repeat.set(3, floors / 4); te.needsUpdate = true;
-    const m = pbr('plaster', { tile: 3, color, windowMap: ft.t, emissiveMap: te, emissive: '#ffffff', emissiveIntensity: 1, key: key });
+    const m = pbr('plaster', { tile: 3, color: '#ffffff', vertexColors: true, windowMap: ft.t, emissiveMap: ft.te, emissive: '#ffffff', emissiveIntensity: 1, key: key });
     m.userData.night = true; facCache.set(key, m);
   }
   return facCache.get(key);
@@ -286,15 +293,31 @@ function officeMat() {
   _office.userData.night = true; return _office;
 }
 
-export function makeCar(color) {
-  const g = new THREE.Group(); const body = M(color, { metalness: 0.6, roughness: 0.35 });
-  const b = new THREE.Mesh(new THREE.BoxGeometry(4.3, 0.8, 1.8), body); b.position.y = 0.65; g.add(b);
-  const c = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.65, 1.6), M('#1a2229', { metalness: 0.9, roughness: 0.1 })); c.position.set(-0.2, 1.35, 0); g.add(c);
-  for (const [x, z] of [[1.4, 0.85], [1.4, -0.85], [-1.4, 0.85], [-1.4, -0.85]]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 0.25, 10), M('#111')); w.rotation.x = Math.PI / 2; w.position.set(x, 0.33, z); g.add(w); }
-  const hl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.15, 1.4), Glow('#fff4d6', 2.5)); hl.position.set(2.16, 0.75, 0); g.add(hl);
-  const tl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.15, 1.4), Glow('#ff2020', 2)); tl.position.set(-2.16, 0.75, 0); g.add(tl);
-  return g;
+// Auto aus wenigen Teilen; Karosserie mit Motorhaube, Kabine, Rädern, Lichtern
+const CAR = {};
+function carGeos() {
+  if (CAR.body) return CAR;
+  const sh = new THREE.Shape(); sh.moveTo(-2.15, 0.25); sh.lineTo(2.1, 0.25); sh.quadraticCurveTo(2.25, 0.3, 2.2, 0.7); sh.lineTo(1.2, 0.95); sh.lineTo(-1.9, 0.98); sh.quadraticCurveTo(-2.2, 0.95, -2.15, 0.25);
+  const body = new THREE.ExtrudeGeometry(sh, { depth: 1.76, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.06, bevelSegments: 2, curveSegments: 4 }); body.translate(0, 0, -0.88);
+  const cab = new THREE.Shape(); cab.moveTo(-1.55, 0); cab.lineTo(0.95, 0); cab.lineTo(0.35, 0.6); cab.lineTo(-1.25, 0.62); cab.lineTo(-1.55, 0);
+  const cabin = new THREE.ExtrudeGeometry(cab, { depth: 1.56, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.04, bevelSegments: 1 }); cabin.translate(0, 0.95, -0.78);
+  const wl = []; for (const [x, z] of [[1.4, 0.83], [1.4, -0.83], [-1.4, 0.83], [-1.4, -0.83]]) { const g = new THREE.CylinderGeometry(0.33, 0.33, 0.24, 12); g.rotateX(Math.PI / 2); g.translate(x, 0.33, z); wl.push(g); }
+  const head = [], tail = []; for (const z of [-0.6, 0.6]) { const h = new THREE.BoxGeometry(0.05, 0.12, 0.35); h.translate(2.21, 0.62, z); head.push(h); const t = new THREE.BoxGeometry(0.05, 0.14, 0.4); t.translate(-2.2, 0.72, z); tail.push(t); }
+  Object.assign(CAR, { body, cabin, wheels: BGU.mergeGeometries(wl), head: BGU.mergeGeometries(head), tail: BGU.mergeGeometries(tail) });
+  return CAR;
 }
+const carMats = {};
+function carPaint(color) { return carMats[color] ||= new THREE.MeshPhysicalMaterial({ color, metalness: 0.55, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 }); }
+const glass = new THREE.MeshStandardMaterial({ color: '#0e161d', metalness: 0.9, roughness: 0.06 });
+const tyre = new THREE.MeshStandardMaterial({ color: '#141414', roughness: 0.8 });
+export function carParts(color) { const c = carGeos(); return [[c.body, carPaint(color)], [c.cabin, glass], [c.wheels, tyre], [c.head, Glow('#fff4d6', 2.5)], [c.tail, Glow('#ff2020', 2)]]; }
+function carInstances(scene, cars) {
+  const c = carGeos(); const n = cars.length; const paint = new THREE.MeshPhysicalMaterial({ color: '#ffffff', metalness: 0.55, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 });
+  const ims = [[c.body, paint], [c.cabin, glass], [c.wheels, tyre], [c.head, Glow('#fff4d6', 2.5)], [c.tail, Glow('#ff2020', 2)]].map(([g, m]) => { const im = new THREE.InstancedMesh(g, m, n); im.castShadow = true; im.frustumCulled = false; scene.add(im); return im; });
+  const col = new THREE.Color(); cars.forEach((car, i) => ims[0].setColorAt(i, col.set(car.mesh.color)));
+  return ims;
+}
+export function makeCar(color) { const g = new THREE.Group(); for (const [geo, mat] of carParts(color)) g.add(new THREE.Mesh(geo, mat)); return g; }
 
 /** Position entlang einer Polylinie */
 export function alongPath(pts, lens, s, out) {
@@ -303,13 +326,16 @@ export function alongPath(pts, lens, s, out) {
   out.x = a[0] + (b[0] - a[0]) * t; out.z = a[1] + (b[1] - a[1]) * t; out.ang = Math.atan2(-(b[1] - a[1]), b[0] - a[0]); return out;
 }
 
+const _cm = new THREE.Matrix4();
 export function updateWorld(G, dt) {
   const o = {};
   for (const c of G.cars) {
     c.s += c.v * dt * c.dir; if (c.s > c.tot) { c.s = c.tot; c.dir = -1; } if (c.s < 0) { c.s = 0; c.dir = 1; }
     alongPath(c.pts, c.lens, c.s, o); const ang = o.ang + (c.dir < 0 ? Math.PI : 0);
     c.mesh.position.set(o.x + Math.sin(ang) * -c.lane, 0, o.z + Math.cos(ang) * -c.lane); c.mesh.rotation.y = ang;
+    _cm.makeRotationY(ang); _cm.setPosition(c.mesh.position); for (const im of G.carIM) im.setMatrixAt(G.cars.indexOf(c), _cm);
   }
+  for (const im of G.carIM) im.instanceMatrix.needsUpdate = true;
   // Tram fährt hin und her und hält an den Haltestellen
   const T = G.tram, P = G.tramPath;
   if (T.wait > 0) T.wait -= dt; else {

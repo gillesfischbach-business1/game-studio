@@ -1,13 +1,13 @@
 // Einstellungen: Standardwerte, Presets, Speichern (localStorage, optional) und Beschreibung fürs Optionsmenü
 export const PRESETS = {
-  niddreg: { reflections: 'aus', grass: 'aus', steam: false, renderScale: 0.75, shadows: 'aus', ao: false, bloom: 0.8, aa: 'fxaa', crowd: 250, lights: 4, texHigh: false, drawDist: 0.8, grain: 0, vignette: 0.25 },
-  mettel: { reflections: 'niddreg', grass: 'niddreg', steam: true, renderScale: 1, shadows: 'niddreg', ao: false, bloom: 1, aa: 'fxaa', crowd: 500, lights: 6, texHigh: true, drawDist: 1, grain: 0.04, vignette: 0.35 },
-  heich: { reflections: 'heich', grass: 'heich', steam: true, renderScale: 1, shadows: 'heich', ao: false, bloom: 1, aa: 'smaa', crowd: 850, lights: 10, texHigh: true, drawDist: 1.2, grain: 0.05, vignette: 0.35 },
-  ultra: { reflections: 'ultra', grass: 'heich', steam: true, renderScale: 1.25, shadows: 'ultra', ao: true, bloom: 1.1, aa: 'smaa', crowd: 1200, lights: 14, texHigh: true, drawDist: 1.4, grain: 0.05, vignette: 0.4 },
+  niddreg: { reflections: 'aus', grass: 'aus', steam: false, renderScale: 0.75, shadows: 'aus', ao: false, bloom: 0.8, aa: 'fxaa', crowd: 220, lights: 2, texHigh: false, drawDist: 0.8, grain: 0, vignette: 0.25 },
+  mettel: { reflections: 'niddreg', grass: 'niddreg', steam: true, renderScale: 1, shadows: 'niddreg', ao: false, bloom: 1, aa: 'fxaa', crowd: 450, lights: 4, texHigh: true, drawDist: 1, grain: 0.04, vignette: 0.35 },
+  heich: { reflections: 'heich', grass: 'heich', steam: true, renderScale: 1, shadows: 'heich', ao: false, bloom: 1, aa: 'smaa', crowd: 750, lights: 6, texHigh: true, drawDist: 1.2, grain: 0.05, vignette: 0.35 },
+  ultra: { reflections: 'ultra', grass: 'heich', steam: true, renderScale: 1.25, shadows: 'ultra', ao: true, bloom: 1.1, aa: 'smaa', crowd: 1100, lights: 10, texHigh: true, drawDist: 1.4, grain: 0.05, vignette: 0.4 },
 };
 export const DEFAULTS = {
   // Grafik
-  preset: 'heich', ...PRESETS.heich, fov: 65, tonemap: 'aces', searchlights: true, lensflare: true, exposure: 1, saturation: 1.05, contrast: 1.04, chroma: 0.15, showFps: false,
+  preset: 'heich', ...PRESETS.heich, fov: 65, tonemap: 'aces', searchlights: true, lensflare: true, dynRes: true, fpsCap: 0, exposure: 1, saturation: 1.05, contrast: 1.04, chroma: 0.15, showFps: false,
   // Kamera
   sens: 1, invertY: false, camDist: 5.2, headBob: true, shake: true, autoCenter: false,
   // Toun
@@ -39,6 +39,8 @@ export function saveSettings(s) { try { localStorage.setItem('fouer2026_settings
 export const OPTION_PAGES = [
   { id: 'grafik', label: 'Grafik', items: [
     { k: 'preset', t: 'sel', l: 'Qualitéits-Preset', o: [['niddreg', 'Niddreg'], ['mettel', 'Mëttel'], ['heich', 'Héich'], ['ultra', 'Ultra']], d: 'Setzt all Grafik-Optiounen op eemol.' },
+    { k: 'dynRes', t: 'tog', l: 'Dynamesch Opléisung (flësseg 60 FPS)', d: 'Reduzéiert d\'Opléisung automatesch, wann d\'Bildrate ënner 55 FPS fält, a geet erëm erop, soubal et flësseg leeft.' },
+    { k: 'fpsCap', t: 'sel', l: 'Bildrate-Limit', o: [[0, 'Keen'], [30, '30 FPS (Akku spueren)'], [60, '60 FPS']] },
     { k: 'renderScale', t: 'sld', l: 'Opléisungs-Skaléierung', min: 0.5, max: 1.5, step: 0.05, fmt: v => Math.round(v * 100) + ' %', d: 'Méi niddreg = méi séier, méi héich = méi scharf.' },
     { k: 'shadows', t: 'sel', l: 'Schatten', o: [['aus', 'Aus'], ['niddreg', 'Niddreg'], ['heich', 'Héich'], ['ultra', 'Ultra']] },
     { k: 'ao', t: 'tog', l: 'Ambient Occlusion (GTAO)', d: 'Realistesch Kontaktschatten an Ecken. Brauch eng staark Grafikkaart.' },

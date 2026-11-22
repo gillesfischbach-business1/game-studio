@@ -40,7 +40,7 @@ export class Batcher {
   }
   addM(geo, mat, matrix) {
     let g = geo.index ? geo.toNonIndexed() : geo.clone();
-    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k) && !(k === 'color' && mat.vertexColors)) g.deleteAttribute(k);
     if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
     if (!g.attributes.normal) g.computeVertexNormals();
     g.applyMatrix4(matrix); if (this.pm) g.applyMatrix4(this.pm);
@@ -48,11 +48,14 @@ export class Batcher {
     this.groups.get(mat).push(g);
     return this;
   }
-  build(parent, { cast = false, receive = true } = {}) {
+  build(parent, { cast = false, receive = true, cell = 70 } = {}) {
+    // Räumlich bündeln: je Material und je 70-m-Zelle ein Mesh -> Frustum-Culling & Schatten wirken
+    const box = new THREE.Box3(), c = new THREE.Vector3();
     for (const [mat, list] of this.groups) {
-      // in Paketen von max. 400 Teilen, damit Frustum-Culling noch hilft
-      for (let i = 0; i < list.length; i += 400) {
-        const geo = mergeGeometries(list.slice(i, i + 400), false);
+      const cells = new Map();
+      for (const g of list) { g.computeBoundingBox(); g.boundingBox.getCenter(c); const k = Math.floor(c.x / cell) + ',' + Math.floor(c.z / cell); if (!cells.has(k)) cells.set(k, []); cells.get(k).push(g); }
+      for (const arr of cells.values()) for (let i = 0; i < arr.length; i += 600) {
+        const geo = mergeGeometries(arr.slice(i, i + 600), false);
         geo.computeBoundingSphere();
         const mesh = new THREE.Mesh(geo, mat);
         mesh.castShadow = cast; mesh.receiveShadow = receive; mesh.matrixAutoUpdate = false; mesh.updateMatrix();

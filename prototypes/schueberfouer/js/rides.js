@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { RIDES, EXTRA_RIDES, FOOTPRINT, L } from './data.js';
 import { Batcher, Bulbs, M, Glow, R, RI, pick, rand, canvasTex, signTex, clamp, lerp, smooth, euro } from './util.js';
 import { pbr } from './tex.js';
+import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _s = new THREE.Vector3(1, 1, 1);
@@ -39,13 +40,31 @@ function mergeSimple(geos) {
   const m = new THREE.BufferGeometry(); m.setAttribute('position', new THREE.BufferAttribute(pos, 3)); m.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); m.setAttribute('color', new THREE.BufferAttribute(col, 3)); return m;
 }
 /** Setzt Mitfahrer in Sitze (Wahrscheinlichkeit p); Sitz-Vorwärts = -z, Figur schaut +z -> um PI drehen */
-function fillRiders(seats, p = 0.6) { for (const s of seats) if (rand() < p) { const r = makeRider(); r.rotation.y = Math.PI; r.position.y = -0.1; s.add(r); s.userData.rider = r; } }
+// Mitfahrer: leere Ankerpunkte; gezeichnet wird ALLES mit 3 InstancedMeshes (Hemd, Haut, Hose) -> 3 Draw-Calls statt ~130
+const RIDERS = [];
+function fillRiders(seats, p = 0.6) { for (const s of seats) if (rand() < p) { const r = new THREE.Object3D(); r.rotation.y = Math.PI; r.position.y = -0.1; s.add(r); s.userData.rider = r;
+  RIDERS.push({ o: r, c: [new THREE.Color(pick(SHIRTS)), new THREE.Color(pick(SKINS)), new THREE.Color(pick(['#1b263b', '#3d405b', '#222', '#6b705c', '#283618']))] }); } }
+function buildRiderInstances(G) {
+  const body = new THREE.CapsuleGeometry(0.2, 0.42, 2, 7); body.scale(1, 1, 0.75); body.translate(0, 0.55, 0);
+  const arms = new THREE.BoxGeometry(0.6, 0.09, 0.1); arms.translate(0, 0.8, 0.12);
+  const shirt = BGU.mergeGeometries([body.toNonIndexed(), arms.toNonIndexed()].map(g => { g.deleteAttribute('uv'); return g; }));
+  const skin = new THREE.SphereGeometry(0.13, 10, 8); skin.scale(0.9, 1.1, 1); skin.translate(0, 1.02, 0.02);
+  const legs = new THREE.BoxGeometry(0.34, 0.15, 0.5); legs.translate(0, 0.25, 0.25);
+  const mats = [new THREE.MeshStandardMaterial({ roughness: 0.85 }), new THREE.MeshStandardMaterial({ roughness: 0.5 }), new THREE.MeshStandardMaterial({ roughness: 0.8 })];
+  G.riderIM = [shirt, skin, legs].map((g, k) => { const im = new THREE.InstancedMesh(g, mats[k], RIDERS.length); im.frustumCulled = false; RIDERS.forEach((rd, i) => im.setColorAt(i, rd.c[k])); G.scene.add(im); return im; });
+}
+const _rm = new THREE.Matrix4(), _zero = new THREE.Matrix4().makeScale(0, 0, 0);
+function updateRiderInstances(G) {
+  if (!G.riderIM) return;
+  RIDERS.forEach((rd, i) => { const m = rd.o.parent ? (rd.o.updateWorldMatrix(true, false), rd.o.matrixWorld) : _zero; for (const im of G.riderIM) im.setMatrixAt(i, m); });
+  for (const im of G.riderIM) im.instanceMatrix.needsUpdate = true;
+}
 
 // =============================================================
 export class Ride {
   constructor(G, id, cfg) {
     this.G = G; this.id = id; this.cfg = cfg; this.name = cfg.name; this.price = cfg.price;
-    this.g = new THREE.Group(); this.g.position.set(cfg.u, 0, cfg.v); G.fairRoot.add(this.g);
+    this.g = new THREE.Group(); this.g.userData.rideId = id; this.g.position.set(cfg.u, 0, cfg.v); G.fairRoot.add(this.g);
     this.seats = []; this.phase = 'load'; this.t = R(0, 10); this.loadT = 12; this.runT = 50; this.k = 0; this.player = null; this.cam = 'third';
     this.B = new Batcher(); this.bulbs = new Bulbs();
   }
@@ -186,11 +205,14 @@ class Carousel extends Ride {
     const colors = ['#ffffff', '#f5e6c8', '#3b2a20', '#8d5524', '#d4a017', '#bfbfbf'];
     for (const [lvl, y, rr, n] of [[0, 0.8, 6.2, 16], [0, 0.8, 4.4, 12], [1, 4.65, 6.0, 14]]) {
       for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2 + lvl * 0.2 + rr * 0.1;
-        const h = new THREE.Mesh(horseGeo, M(pick(colors), { roughness: 0.4, metalness: 0.1 })); h.position.set(Math.cos(a) * rr, y + 1.1, Math.sin(a) * rr); h.rotation.y = -a; this.rot.add(h);
+        const h = new THREE.Object3D(); h.userData.col = pick(colors); h.position.set(Math.cos(a) * rr, y + 1.1, Math.sin(a) * rr); h.rotation.y = -a; this.rot.add(h);
         RB.add(new THREE.CylinderGeometry(0.05, 0.05, 3.2, 6), gold, Math.cos(a) * rr, y + 1.6, Math.sin(a) * rr);
         const seat = new THREE.Object3D(); seat.position.set(0, 0.3, 0); seat.rotation.y = Math.PI / 2; h.add(seat); this.seats.push(seat); this.horses.push({ h, y0: y + 1.1, ph: rand() * 6 }); }
     }
     RB.build(this.rot); rb.build(this.rot);
+    // alle Pferde in einem Draw-Call
+    this.horseIM = new THREE.InstancedMesh(horseGeo, new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.15 }), this.horses.length); this.horseIM.frustumCulled = false;
+    this.horses.forEach((o, i) => this.horseIM.setColorAt(i, new THREE.Color(o.h.userData.col))); this.g.add(this.horseIM);
     fillRiders(this.seats, 0.45);
     this.booth(5.5, 7.5, 0, '#ffcf70');
     this.sign('CARROUSEL GALOPANT', 9, 1.0, 0, 9.0, 9.4, 0, { fg: '#ffcf70', border: '#9b2226', bg: '#3b1d0e' });
@@ -198,7 +220,8 @@ class Carousel extends Ride {
     this.finish(); this.a = 0;
   }
   update(dt) { this.cycle(dt); const sp = 0.12 + this.k * 0.33; this.a += sp * dt; this.rot.rotation.y = this.a;
-    for (const o of this.horses) o.h.position.y = o.y0 + Math.sin(this.a * 6 + o.ph) * 0.35 * (0.3 + this.k); }
+    const inv = this.g.matrixWorld.clone().invert(); this.rot.updateMatrixWorld(true);
+    this.horses.forEach((o, i) => { o.h.position.y = o.y0 + Math.sin(this.a * 6 + o.ph) * 0.35 * (0.3 + this.k); o.h.updateMatrixWorld(); _rm.multiplyMatrices(inv, o.h.matrixWorld); this.horseIM.setMatrixAt(i, _rm); }); this.horseIM.instanceMatrix.needsUpdate = true; }
 }
 function makeHorseGeo(G) {
   const { mergeGeometries } = G.BGU;
@@ -650,5 +673,6 @@ export function buildRides(G) {
   G.rides = {}; const map = { ferris: Ferris, carousel: Carousel, breakdance: BreakDance, swing: Swing, freefall: FreeFall, pendulum: Pendulum, coaster: Coaster, scooter: Scooter, ghost: Ghost, vr: VR };
   for (const [id, cfg] of Object.entries(RIDES)) G.rides[id] = new map[cfg.type](G, id, cfg);
   EXTRA_RIDES.forEach((cfg, i) => { G.rides['x' + i] = new Generic(G, 'x' + i, cfg); });
+  buildRiderInstances(G);
 }
-export function updateRides(G, dt) { for (const r of Object.values(G.rides)) r.update(dt); }
+export function updateRides(G, dt) { for (const r of Object.values(G.rides)) r.update(dt); updateRiderInstances(G); }

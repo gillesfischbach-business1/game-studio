@@ -17,19 +17,27 @@ export function setupReflection(G) {
   reflU.uReflOn.value = 0; if (!scale) return;
   const w = Math.round(innerWidth * scale), h = Math.round(innerHeight * scale);
   const r = new Reflector(new THREE.PlaneGeometry(1400, 1400), { textureWidth: w, textureHeight: h, clipBias: 0.02, color: 0xffffff });
+  r.camera.layers.set(1); if (S.reflections === 'ultra') r.camera.layers.enable(0);
   r.rotation.x = -Math.PI / 2; r.position.set(0, 0.05, 0); r.material.colorWrite = false; r.material.depthWrite = false; r.renderOrder = -10; r.castShadow = false; r.receiveShadow = false;
   const dummy = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); dummy.needsUpdate = true;
   const orig = r.onBeforeRender.bind(r); const inv = new THREE.Matrix4(); let last = -1;
   r.onBeforeRender = (renderer, scene, camera) => {
     if (G.frameNo === last || camera !== G.camera) return; last = G.frameNo;
-    reflU.uRefl.value = dummy; const crowdVis = G.crowd ? Object.values(G.crowd.im).map(m => m.visible) : [];
-    if (S.reflections !== 'ultra' && G.crowd) Object.values(G.crowd.im).forEach(m => m.visible = false); // Menge nur auf Ultra spiegeln
-    orig(renderer, scene, camera);
-    if (G.crowd) Object.values(G.crowd.im).forEach((m, i) => m.visible = crowdVis[i]);
+    reflU.uRefl.value = dummy; const sh = renderer.shadowMap.autoUpdate; renderer.shadowMap.autoUpdate = false;
+    orig(renderer, scene, camera); renderer.shadowMap.autoUpdate = sh;
     r.updateMatrixWorld(); inv.copy(r.matrixWorld).invert(); reflU.uReflMat.value.copy(r.material.uniforms.textureMatrix.value).multiply(inv);
     reflU.uRefl.value = r.getRenderTarget().texture;
   };
   G.scene.add(r); G.reflector = r; reflU.uReflOn.value = 1;
+}
+
+/** Markiert alles, was sich im nassen Asphalt spiegeln soll (Layer 1): Licht, Schilder, Fahrgeschäfte, Himmel */
+export function tagReflective(G) {
+  const on = o => o.layers.enable(1);
+  G.scene.traverse(o => { if (o.isLight) on(o); const m = o.material; if (!m) return;
+    if (m instanceof THREE.MeshBasicMaterial || m instanceof THREE.ShaderMaterial || m.emissiveIntensity > 0.3 && m.emissiveMap || m.map?.isCanvasTexture && (m.emissiveMap || m.toneMapped === false)) on(o); });
+  for (const r of Object.values(G.rides || {})) r.g.traverse(on);
+  if (G.sky) on(G.sky); G.lightPool?.forEach(on);
 }
 
 // ---------------- Blätter-Bäume (CC0-Blattatlas von ambientCG) ----------------

@@ -169,7 +169,7 @@ export function buildFair(G) {
   }
   // Abschluss erst nach den Attraktionen (die ihre Kassen in denselben Batch legen)
   G.fairBatch = B; G.fairBulbs = bulbs;
-  G.finishFair = () => { B.build(root); bulbs.build(root); G.glowMat = glow.build(root); };
+  G.finishFair = () => { B.build(root, { cell: 150 }); bulbs.build(root); G.glowMat = glow.build(root); };
 }
 
 

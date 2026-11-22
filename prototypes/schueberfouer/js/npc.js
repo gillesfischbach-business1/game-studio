@@ -33,35 +33,35 @@ function vcol(geo, fn) { const p = geo.attributes.position; const c = new Float3
 const W1 = [1, 1, 1];
 /** Oberkörper (Hemd) relativ zur Brustmitte, inkl. kurzer Ärmel */
 export function torsoGeo() {
-  const t = lathe([[0.001, -0.36], [0.165, -0.35], [0.158, -0.22], [0.15, -0.12], [0.165, 0.02], [0.185, 0.13], [0.19, 0.19], [0.16, 0.25], [0.085, 0.29], [0.06, 0.31], [0.001, 0.31]], 14, 0.64);
+  const t = lathe([[0.001, -0.36], [0.165, -0.35], [0.158, -0.22], [0.15, -0.12], [0.165, 0.02], [0.185, 0.13], [0.19, 0.19], [0.16, 0.25], [0.085, 0.29], [0.06, 0.31], [0.001, 0.31]], 10, 0.64);
   const parts = [t.toNonIndexed()];
-  for (const sx of [-1, 1]) { const s = new THREE.CylinderGeometry(0.068, 0.062, 0.16, 10); s.rotateZ(sx * 0.35); s.translate(sx * 0.205, 0.16, 0); parts.push(s.toNonIndexed()); const c = new THREE.SphereGeometry(0.07, 10, 8); c.translate(sx * 0.19, 0.22, 0); parts.push(c.toNonIndexed()); }
+  for (const sx of [-1, 1]) { const s = new THREE.CylinderGeometry(0.068, 0.062, 0.16, 7); s.rotateZ(sx * 0.35); s.translate(sx * 0.205, 0.16, 0); parts.push(s.toNonIndexed()); const c = new THREE.SphereGeometry(0.07, 7, 5); c.translate(sx * 0.19, 0.22, 0); parts.push(c.toNonIndexed()); }
   for (const p of parts) p.deleteAttribute('uv');
   return BGU.mergeGeometries(parts);
 }
 /** Bein (Hose) mit Schuh; Drehpunkt an der Hüfte, Länge ~0.9 */
 export function legGeo() {
-  const l = lathe([[0.001, 0.06], [0.09, 0.05], [0.1, -0.05], [0.085, -0.3], [0.066, -0.45], [0.07, -0.55], [0.058, -0.75], [0.05, -0.84], [0.001, -0.86]], 10);
+  const l = lathe([[0.001, 0.06], [0.09, 0.05], [0.1, -0.05], [0.085, -0.3], [0.066, -0.45], [0.07, -0.55], [0.058, -0.75], [0.05, -0.84], [0.001, -0.86]], 7);
   const shoe = new THREE.BoxGeometry(0.1, 0.07, 0.25); shoe.translate(0, -0.875, 0.05);
   const g = BGU.mergeGeometries([l.toNonIndexed(), shoe.toNonIndexed()].map(x => { x.deleteAttribute('uv'); return x; }));
   return vcol(g, (x, y) => y < -0.84 ? [0.13, 0.13, 0.14] : W1);
 }
 /** Arm (Haut) mit Hand; Drehpunkt an der Schulter */
 export function armGeo() {
-  const a = lathe([[0.001, 0.02], [0.05, 0.0], [0.048, -0.22], [0.04, -0.3], [0.038, -0.5], [0.03, -0.56], [0.001, -0.57]], 8);
-  const hand = new THREE.SphereGeometry(0.045, 8, 6); hand.scale(0.8, 1.2, 0.55); hand.translate(0, -0.62, 0.01);
+  const a = lathe([[0.001, 0.02], [0.05, 0.0], [0.048, -0.22], [0.04, -0.3], [0.038, -0.5], [0.03, -0.56], [0.001, -0.57]], 6);
+  const hand = new THREE.SphereGeometry(0.045, 6, 4); hand.scale(0.8, 1.2, 0.55); hand.translate(0, -0.62, 0.01);
   return BGU.mergeGeometries([a.toNonIndexed(), hand.toNonIndexed()].map(x => { x.deleteAttribute('uv'); return x; }));
 }
 /** Kopf mit Hals; Ursprung = Kopfmitte. UV vom Kugel-Teil -> Gesichtstextur */
 export function headGeo() {
-  const h = new THREE.SphereGeometry(0.115, 18, 14); h.scale(0.9, 1.1, 1.0);
+  const h = new THREE.SphereGeometry(0.115, 14, 10); h.scale(0.9, 1.1, 1.0);
   const neck = new THREE.CylinderGeometry(0.05, 0.058, 0.14, 10); neck.translate(0, -0.15, -0.01);
   const ears = []; for (const sx of [-1, 1]) { const e = new THREE.SphereGeometry(0.025, 6, 6); e.scale(0.5, 1, 0.8); e.translate(sx * 0.103, 0.0, -0.005); ears.push(e); }
   const nose = new THREE.ConeGeometry(0.018, 0.045, 6); nose.rotateX(Math.PI / 2); nose.translate(0, -0.008, 0.118);
   return BGU.mergeGeometries([h, neck, ...ears, nose].map(x => x.index ? x.toNonIndexed() : x));
 }
 export function hairGeo(style = 0) {
-  const cap = new THREE.SphereGeometry(0.124, 16, 10, 0, Math.PI * 2, 0, Math.PI * (style === 2 ? 0.62 : 0.5)); cap.scale(0.92, 1.1, 1.04); cap.rotateX(-0.28); cap.translate(0, 0.012, -0.006);
+  const cap = new THREE.SphereGeometry(0.124, 12, 7, 0, Math.PI * 2, 0, Math.PI * (style === 2 ? 0.62 : 0.5)); cap.scale(0.92, 1.1, 1.04); cap.rotateX(-0.28); cap.translate(0, 0.012, -0.006);
   const parts = [cap.toNonIndexed()];
   if (style === 1) { const p = new THREE.CapsuleGeometry(0.04, 0.16, 3, 6); p.rotateX(0.35); p.translate(0, -0.06, -0.12); parts.push(p.toNonIndexed()); }
   if (style === 2) { const b = new THREE.BoxGeometry(0.2, 0.24, 0.06); b.translate(0, -0.08, -0.095); parts.push(b.toNonIndexed()); }
@@ -187,7 +187,7 @@ export class Crowd {
     // räumliches Raster für Abstand halten
     const grid = this.grid; grid.clear(); const cs = 2;
     for (let i = 0; i < N; i++) { const o = this.a[i]; const k = Math.floor(o.x / cs) * 73856 + Math.floor(o.z / cs); let arr = grid.get(k); if (!arr) grid.set(k, arr = []); arr.push(i); }
-    const px = player.pos.x, pz = player.pos.z; const crowdFactor = G.crowdFactor ?? 1; const camP = G.camera.position;
+    const px = player.pos.x, pz = player.pos.z; const crowdFactor = G.crowdFactor ?? 1; const camP = G.camera.position; const cut = 85 * (G.settings.drawDist || 1); const cut2 = cut * cut;
     for (let i = 0; i < N; i++) {
       const o = this.a[i]; let moving = 0;
       if (o.state === 'walk') {
@@ -213,7 +213,11 @@ export class Crowd {
         const r = {}; alongPath(o.road.pts, o.road.lens, o.sp, r); const off = (o.road.w / 2 + 1.4) * o.side; o.x = r.x + Math.sin(r.ang) * off; o.z = r.z + Math.cos(r.ang) * off; o.yaw = r.ang + (o.dir > 0 ? Math.PI / 2 : -Math.PI / 2); moving = o.speed;
       }
       // Instanz-Matrizen
-      let s = o.s; const cdx = o.x - camP.x, cdz = o.z - camP.z; if (cdx * cdx + cdz * cdz < 3.2 && camP.y < 3) s = 0.0001; o.ph += dt * moving * 5.4; const sw = Math.sin(o.ph) * 0.5 * Math.min(1, moving);
+      const cdx = o.x - camP.x, cdz = o.z - camP.z, d2 = cdx * cdx + cdz * cdz;
+      // Detailstufen: weit weg -> unsichtbar, mittel -> nur jedes 3. Bild aktualisieren
+      if (d2 > cut2) { if (!o.hid) { o.hid = true; this.hide(i); } continue; }
+      if (o.hid) o.hid = false; else if (d2 > 1600 && (this.frame + i) % 3 !== 0) continue;
+      let s = o.s; if (d2 < 3.2 && camP.y < 3) s = 0.0001; o.ph += dt * moving * 5.4 * (d2 > 1600 ? 3 : 1); const sw = Math.sin(o.ph) * 0.5 * Math.min(1, moving);
       const bob = Math.abs(Math.cos(o.ph)) * 0.03 * Math.min(1, moving);
       const cy = Math.cos(o.yaw), sy = Math.sin(o.yaw); const m = this._m;
       this.set('torso', i, o.x, (1.32 + bob) * s, o.z, 0, o.yaw, s);
@@ -228,6 +232,7 @@ export class Crowd {
     }
     for (const m of Object.values(this.im)) m.instanceMatrix.needsUpdate = true;
   }
+  hide(i) { this._m.makeScale(0, 0, 0); for (const m of Object.values(this.im)) m.setMatrixAt(i, this._m); }
   set(k, i, x, y, z, rx, ry, s) { this._e.set(rx, ry, 0, 'YXZ'); this._q.setFromEuler(this._e); this._m.compose(this._p.set(x, y, z), this._q, this._s.set(s, s, s)); this.im[k].setMatrixAt(i, this._m); }
   /** nächster Knoten zu einer Weltposition */
   nearestNode(x, z) { let b = 0, bd = 1e9; this.nodes.forEach((n, i) => { const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; b = i; } }); return b; }

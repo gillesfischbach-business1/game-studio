@@ -23,7 +23,7 @@ import { configureTextures, makeSky, wetUniform, reflU } from './tex.js';
 import { loadSettings, saveSettings, PRESETS } from './settings.js';
 import { loadProps, placeProps } from './props.js';
 import { CloudClient } from './cloud.js';
-import { setupReflection, buildFoliage, buildGrass, buildSearchlights, buildSteam, buildLensflare, updateFx } from './fx.js';
+import { setupReflection, buildFoliage, buildGrass, buildSearchlights, buildSteam, buildLensflare, updateFx, tagReflective } from './fx.js';
 
 const params = new URLSearchParams(location.search);
 const isMobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || (matchMedia('(pointer:coarse)').matches && innerWidth < 1100);
@@ -66,8 +66,8 @@ async function boot() {
   G.ui = new UI(G); setLoad(0.05, 'Schrëften lueden …');
   try { await Promise.race([Promise.all([document.fonts.load('40px Bungee'), document.fonts.load('40px Creepster'), document.fonts.load('40px Oswald')]), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
   const S = G.settings;
-  const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: params.has('shot') });
-  renderer.setSize(innerWidth, innerHeight);
+  const renderer = new THREE.WebGLRenderer({ stencil: false, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: params.has('shot') });
+  renderer.setSize(innerWidth, innerHeight); renderer.info.autoReset = false;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   document.getElementById('game').appendChild(renderer.domElement);
   configureTextures(renderer, !S.texHigh);
@@ -121,21 +121,31 @@ async function boot() {
   const fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa);
   const smaa = new SMAAPass(innerWidth, innerHeight); composer.addPass(smaa);
   Object.assign(G, { composer, bloom, gtao, grade, fxaa, smaa });
-  const resize = () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); const pr = Math.min(devicePixelRatio, 2) * G.settings.renderScale; renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight); composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight); fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr)); };
+  const resize = () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); const pr = Math.min(devicePixelRatio, isMobile ? 1.5 : 2) * G.settings.renderScale * (G.dynScale || 1); renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight); composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight); fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr)); };
   addEventListener('resize', resize); G.resize = resize;
-  G.applySettings = applySettings; applySettings(true); setupReflection(G); G._refl = G.settings.reflections;
+  G.applySettings = applySettings; applySettings(true); tagReflective(G); setupReflection(G); G._refl = G.settings.reflections;
 
   G.minutes = TIME.start; G.day = DAYS[0];
   applyTime(0);
   G.running = params.has('shot');
   G.ui.ready();
   G.ui.loading(1, '');
-  let last = performance.now(); let acc = 0, frames = 0;
+  let last = performance.now(); let acc = 0, frames = 0, ema = 16.7, dynT = 0; G.dynScale = 1; renderer.shadowMap.autoUpdate = false; const lastShadowPos = new THREE.Vector3(1e9, 0, 0); let shadowAge = 0;
   renderer.setAnimationLoop(() => {
-    const now = performance.now(); let dt = Math.min(0.05, (now - last) / 1000); last = now; acc += dt; frames++;
+    const now = performance.now(); const raw = now - last;
+    if (G.settings.fpsCap && raw < 1000 / G.settings.fpsCap - 1.5) return; // Bildrate-Limit (Akku)
+    let dt = Math.min(0.05, raw / 1000); last = now; acc += raw / 1000; frames++;
     if (acc > 0.5) { G.fps = frames / acc; acc = 0; frames = 0; }
-    G.frameNo = (G.frameNo || 0) + 1; step(dt);
-    if (G.cloudActive) { /* Bild kommt aus der Cloud */ } else if (G.altRender) G.altRender(dt); else composer.render();
+    // Dynamische Auflösung: Ziel ~60 FPS (16,7 ms); mehr Spielraum bei Bildrate-Limit
+    ema = ema * 0.94 + raw * 0.06; dynT += raw;
+    if (G.settings.dynRes && G.ui.started && dynT > 700) { dynT = 0; const target = G.settings.fpsCap ? 1000 / G.settings.fpsCap : 16.7;
+      const prev = G.dynScale; if (ema > target * 1.12) G.dynScale = Math.max(0.5, G.dynScale - 0.08); else if (ema < target * 0.8) G.dynScale = Math.min(1, G.dynScale + 0.04);
+      if (prev !== G.dynScale) G.resize(); }
+    // Schatten nur neu berechnen, wenn nötig (Bewegung, Zeit, alle paar Bilder für Fahrgeschäfte)
+    shadowAge++; const pp = G.player?.pos; const moved = pp ? pp.distanceToSquared(lastShadowPos) > 4 : true;
+    if (renderer.shadowMap.enabled && (moved || shadowAge >= (G.night > 0.5 ? 8 : 3))) { renderer.shadowMap.needsUpdate = true; shadowAge = 0; if (pp) lastShadowPos.copy(pp); }
+    G.frameNo = (G.frameNo || 0) + 1; const f0 = performance.now(); step(dt); pt('step', f0);
+    const r0 = performance.now(); renderer.info.reset(); if (G.cloudActive) { /* Bild kommt aus der Cloud */ } else if (G.altRender) G.altRender(dt); else composer.render(); pt('render', r0); G.drawCalls = renderer.info.render.calls; G.tris = renderer.info.render.triangles;
     if (G.wantShot) { const f = G.wantShot; G.wantShot = null; f(renderer.domElement.toDataURL('image/png')); }
   });
 }
@@ -152,7 +162,7 @@ function applySettings(first = false) {
   if (sm && G.sun.shadow.mapSize.x !== sm) { G.sun.shadow.mapSize.set(sm, sm); G.sun.shadow.map?.dispose(); G.sun.shadow.map = null; }
   const ext = { 1024: 45, 2048: 60, 4096: 80 }[sm] || 60; Object.assign(G.sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext }); G.sun.shadow.camera.updateProjectionMatrix();
   if (was !== r.shadowMap.enabled) G.scene.traverse(o => { if (o.material) [].concat(o.material).forEach(m => m.needsUpdate = true); });
-  while (G.lightPool.length < S.lights) { const p = new THREE.PointLight('#ffffff', 0, 26, 1.6); G.scene.add(p); G.lightPool.push(p); }
+  while (G.lightPool.length < S.lights) { const p = new THREE.PointLight('#ffffff', 0, 26, 1.6); p.layers.enable(1); G.scene.add(p); G.lightPool.push(p); }
   while (G.lightPool.length > S.lights) G.scene.remove(G.lightPool.pop());
   G.gtao.enabled = !!S.ao; G.fxaa.enabled = S.aa === 'fxaa'; G.smaa.enabled = S.aa === 'smaa';
   const u = G.grade.uniforms; u.uVig.value = S.vignette; u.uGrain.value = S.grain; u.uSat.value = S.saturation; u.uCon.value = S.contrast; u.uCA.value = S.chroma; u.uCB.value.fromArray(CB[S.colorblind] || CB.keen).transpose();
@@ -218,8 +228,10 @@ function makeRain() {
 }
 
 let lightTimer = 0, flyT = 0;
+const PT = {}; const pt = (k, t0) => { PT[k] = (PT[k] || 0) * 0.9 + (performance.now() - t0) * 0.1; };
+G.prof = PT;
 function step(dt) {
-  const S = G.settings; const realDt = dt; G.time += dt; bulbUniforms.uTime.value = G.time;
+  const S = G.settings; const realDt = dt; G.time += dt; bulbUniforms.uTime.value = G.time; let t0;
   const paused = G.ui.paused();
   if (paused) dt = 0;
   if (!paused && G.running && S.cycle) G.minutes += dt * TIME.minutesPerSecond * S.timeScale;
@@ -228,20 +240,20 @@ function step(dt) {
     flyT += realDt * 0.035; updateWorld(G, realDt); updateRides(G, realDt); G.crowd.update(realDt, G.player);
     const c = G.fairPosToWorld(-10, 0); G.camera.position.set(c.x + Math.cos(flyT) * 120, 42 + Math.sin(flyT * 0.7) * 8, c.z + Math.sin(flyT) * 95); G.camera.lookAt(c.x, 8, c.z);
   } else if (!paused) {
-    updateWorld(G, dt); updateRides(G, dt);
-    G.player.update(dt, G.ui.blockInput() ? { lookX: 0, lookY: 0, wheel: 0, moveX: 0, moveY: 0 } : inp);
-    G.crowd.update(dt, G.player);
-    G.game.update(dt);
+    t0 = performance.now(); updateWorld(G, dt); pt('world', t0); t0 = performance.now(); updateRides(G, dt); pt('rides', t0);
+    t0 = performance.now(); G.player.update(dt, G.ui.blockInput() ? { lookX: 0, lookY: 0, wheel: 0, moveX: 0, moveY: 0 } : inp); pt('player', t0);
+    t0 = performance.now(); G.crowd.update(dt, G.player); pt('crowd', t0);
+    t0 = performance.now(); G.game.update(dt); pt('game', t0);
   } else if (G.ui.menuCam) G.ui.menuCam(realDt);
-  updateFx(G, realDt);
-  applyTime(realDt);
+  t0 = performance.now(); updateFx(G, realDt); pt('fx', t0);
+  t0 = performance.now(); applyTime(realDt); pt('time', t0);
   lightTimer -= realDt;
   if (lightTimer < 0 && G.lightSpotsW) {
     lightTimer = 0.35; const p = G.ui.started ? G.player.pos : G.camera.position;
     const near = G.lightSpotsW.map(s => [s, (s.x - p.x) ** 2 + (s.z - p.z) ** 2]).sort((a, b) => a[1] - b[1]).slice(0, G.lightPool.length);
     G.lightPool.forEach((l, i) => { const s = near[i]?.[0]; if (!s) { l.intensity = 0; return; } l.position.set(s.x, 4.5, s.z); l.color.copy(s.color); l.intensity = 38 * G.night; });
   }
-  G.ui.update(realDt);
+  t0 = performance.now(); G.ui.update(realDt); pt('ui', t0);
   inp.endFrame();
 }
 
