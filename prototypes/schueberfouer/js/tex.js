@@ -42,20 +42,23 @@ export function pbr(set, o = {}) {
     envMapIntensity: o.envMapIntensity ?? 1,
   });
   m.userData.tile = o.tile ?? 2; m.userData.set = set; m.userData.wet = o.wet ?? 0;
-  worldProject(m, o.tile ?? 2, o.windowMap, o.plane);
+  worldProject(m, o.tile ?? 2, o.windowMap, o.plane, o.reflect);
   matCache.set(key, m); PBR_MATS.push(m); return m;
 }
 export const PBR_MATS = [];
 export const wetUniform = { value: 0 };
+// Planare Spiegelung (wird von fx.js befüllt): nasse Straßen spiegeln die Kirmeslichter
+export const reflU = { uRefl: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 } };
 
 /** Ersetzt die UV-Koordinaten durch eine dominante-Achsen-Projektion der Weltposition. */
-export function worldProject(m, tile, windowMap, plane) {
+export function worldProject(m, tile, windowMap, plane, reflect) {
   const uTile = { value: 1 / tile };
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTile = uTile; sh.uniforms.uWet = wetUniform; m.userData.shader = sh;
+    if (reflect) Object.assign(sh.uniforms, reflU);
     if (windowMap) sh.uniforms.uWin = { value: windowMap };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;')
+      .replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;' + (reflect ? '\nuniform mat4 uReflMat; varying vec4 vRefl;' : ''))
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vec4 _wp = vec4(transformed, 1.0);
         #ifdef USE_INSTANCING
@@ -66,10 +69,12 @@ export function worldProject(m, tile, windowMap, plane) {
         #ifdef USE_INSTANCING
           _n = mat3(instanceMatrix) * _n;
         #endif
-        vWN = normalize(mat3(modelMatrix) * _n);`);
+        vWN = normalize(mat3(modelMatrix) * _n);
+        ${reflect ? 'vRefl = uReflMat * vec4(vWP, 1.0);' : ''}`);
     let fs = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-        varying vec3 vWP; varying vec3 vWN; uniform float uTile; uniform float uWet; ${windowMap ? 'uniform sampler2D uWin;' : ''}`)
+        varying vec3 vWP; varying vec3 vWN; uniform float uTile; uniform float uWet; ${windowMap ? 'uniform sampler2D uWin;' : ''}
+        ${reflect ? 'uniform sampler2D uRefl; uniform float uReflOn; varying vec4 vRefl;' : ''}`)
       .replace('void main() {', `void main() {
         vec3 _an = abs(vWN);
         vec2 wuv = ${plane === 'xz' ? 'vWP.xz' : '_an.y > 0.6 ? vWP.xz : (_an.x > _an.z ? vec2(vWP.z, vWP.y) : vec2(vWP.x, vWP.y))'} * uTile;
@@ -83,9 +88,18 @@ export function worldProject(m, tile, windowMap, plane) {
     fs = fs.replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
       float _wet = uWet * smoothstep(0.6, 0.95, _an.y); roughnessFactor = mix(roughnessFactor, 0.08, _wet * 0.85);`)
       .replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb *= 1.0 - 0.35 * uWet * smoothstep(0.6, 0.95, abs(vWN.y));');
+    if (reflect) fs = fs.replace('#include <opaque_fragment>', `
+      if (uReflOn > 0.0) {
+        vec2 ruv = vRefl.xy / vRefl.w; vec2 off = normal.xy * 0.035; float rr = roughnessFactor;
+        vec3 rc = texture2D(uRefl, ruv + off).rgb * 0.4 + texture2D(uRefl, ruv + off + vec2(0.004, 0.0) * rr).rgb * 0.15 + texture2D(uRefl, ruv + off - vec2(0.004, 0.0) * rr).rgb * 0.15 + texture2D(uRefl, ruv + off + vec2(0.0, 0.012) * rr).rgb * 0.15 + texture2D(uRefl, ruv + off - vec2(0.0, 0.012) * rr).rgb * 0.15;
+        float fres = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 4.0);
+        float k = uReflOn * (mix(0.08, 0.5, uWet) + fres * 0.3) * (1.0 - rr * 0.45);
+        outgoingLight += rc * k;
+      }
+      #include <opaque_fragment>`);
     sh.fragmentShader = fs;
   };
-  m.customProgramCacheKey = () => 'wp' + (windowMap ? 'w' : '') + (plane || '');
+  m.customProgramCacheKey = () => 'wp' + (windowMap ? 'w' : '') + (plane || '') + (reflect ? 'r' : '');
   m.userData.uTile = uTile;
 }
 

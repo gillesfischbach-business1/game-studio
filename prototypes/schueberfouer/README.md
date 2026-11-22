@@ -1,6 +1,6 @@
 # Schueberfouer 2026 – Open-World-Kirmes-Simulation (Browser-Prototyp)
 
-**Status:** in Arbeit (spielbare Version 0.2)
+**Status:** in Arbeit (spielbare Version 0.3)
 
 ## Hypothese
 Eine detailgetreue, frei begehbare Simulation der Schueberfouer auf dem Glacis (Stad Lëtzebuerg)
@@ -70,10 +70,18 @@ eine Unity-Version einfließen (Regel: Prototyp-Code wird nicht migriert, sonder
 - **Garderob:** Charakter-Editor mit Drehteller-Kamera (Haut, Größe, Frisur, Haarfarbe, T-Shirt, Hose, Schuhe, alle Fouer-Kleider).
 - **Optionen:** Grafik (Preset, Auflösung, Schatten, AO, Kantenglättung, Bloom, Lichter, Besucherzahl, Sichtweite, FOV, Tone-Mapping, Helligkeit, Kontrast, Sättigung, Vignette, Filmkorn, FPS), Kamera & Maus, Ton (4 Kanäle), Spiel & Zeit (Uhrzeit-Regler, Lichtstimmung, Zyklus an/aus, Zeitgeschwindigkeit, Wetter, Fouer-Tag, HUD-Elemente, Autosave), Steuerung (Tasten frei belegbar, Gamepad), Barrierefreiheit (UI-Größe, Blitzreduktion, Bewegungsreduktion, Farbenblind-Filter, hoher Kontrast).
 
+## Version 0.3 – Natürlichere Grafik & Cloud-Gaming-Vorbereitung
+- **Planare Spiegelungen:** Kirmeslichter spiegeln sich im Asphalt, bei Regen stark (Option „Spigelungen“).
+- **Echte 3D-Modelle** (Poly Haven, CC0, mit gltf-transform vereinfacht): klassische Straßenlaternen, Bänke, Mülleimer, Wein- und Bierfässer, Pflanzkästen, Kaffeewagen (benutzbar), Hängelampen und Tischlaternen in den Restaurants.
+- **Laubbäume** aus einem fotografierten Blattatlas (ambientCG, CC0) mit Ästen und Wind; **Gras** in Park und Grünflächen.
+- **Atmosphäre:** Suchscheinwerfer am Nachthimmel, Dampf über Fritten-, Fisch- und Crêpes-Ständen, Linsenreflex der Sonne, ziehende Wolken.
+- **Cloud Gaming (Beta):** WHEP/WebRTC-Client (`js/cloud.js`) im Optionsmenü; Eingaben per DataChannel. Plan: `docs/architecture/ADR-0001-cloud-rendering.md`. Funktioniert nur bei eigenem Hosting (Artifact-Sicherheitsrichtlinie blockiert fremde Server).
+- **Welt-Export für Unity/Unreal/Blender:** `node tools/export-world.mjs` erzeugt `exports/layout.json` und eine GLB, die anschließend mit gltf-transform komprimiert wird (`exports/schueberfouer_world.glb`, meshopt, 3,2 MB, glTF-Validator ohne Fehler). Böden/Fassaden tragen Materialnamen `PH_<set>`, damit die Engine die Poly-Haven-Materialien zuweisen kann. Vorschau: `tools/preview-export.html`.
+
 ## Dateien
 `index.html` (lokal), `artifact.html` (veröffentlichte Variante), `js/data.js` (alle
 Spieldaten), `js/world.js`, `js/fair.js`, `js/rides.js`, `js/npc.js`, `js/player.js`,
-`js/game.js`, `js/ui.js`, `js/menu.js`, `js/settings.js`, `js/tex.js`, `js/audio.js`, `js/main.js`, `assets/tor2026.jpg`, `assets/tex/` (Poly Haven, CC0).
+`js/game.js`, `js/ui.js`, `js/menu.js`, `js/settings.js`, `js/tex.js`, `js/audio.js`, `js/main.js`, `assets/tor2026.jpg`, `assets/tex/` (Poly Haven, CC0), `js/props.js`, `js/fx.js`, `js/cloud.js`, `assets/models/` (Poly Haven, CC0, als eingebettetes glTF-JSON), `tools/`, `exports/`.
 
 ## Erkenntnisse (bisher)
 - Die Lichtstimmung entsteht vor allem durch tausende instanzierte Glühbirnen mit Shader-Lauflicht

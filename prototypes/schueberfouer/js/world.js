@@ -16,7 +16,7 @@ export function buildWorld(G) {
 
   // Glacis-Asphalt (Fotoscan) + Parkplatz-Markierungen als Decal (die Glacis ist sonst ein Parkplatz!)
   const shape = new THREE.Shape(GLACIS_POLY.map(([x, z]) => new THREE.Vector2(x, -z)));
-  const glacis = new THREE.Mesh(new THREE.ShapeGeometry(shape), pbr('asphalt', { tile: 5, plane: 'xz', color: '#9a9a9e' }));
+  const glacis = new THREE.Mesh(new THREE.ShapeGeometry(shape), pbr('asphalt', { tile: 5, plane: 'xz', color: '#9a9a9e', reflect: true }));
   glacis.rotation.x = -Math.PI / 2; glacis.position.y = 0.03; glacis.receiveShadow = true; scene.add(glacis);
   const lines = canvasTex(512, 512, (g, w, h) => {
     g.clearRect(0, 0, w, h); g.strokeStyle = 'rgba(240,240,235,0.75)'; g.lineWidth = 6;
@@ -29,7 +29,7 @@ export function buildWorld(G) {
   lineMesh.rotation.x = -Math.PI / 2; lineMesh.position.y = 0.045; lineMesh.receiveShadow = true; scene.add(lineMesh);
 
   // ---------------- Straßen ----------------
-  const roadMat = pbr('road', { tile: 6, plane: 'xz', color: '#8a8a8e' });
+  const roadMat = pbr('road', { tile: 6, plane: 'xz', color: '#8a8a8e', reflect: true });
   const walkMat = pbr('paving', { tile: 2.4, color: '#c9c4ba' });
   const lineMat = M('#e6e6e6', { roughness: 0.6 });
   G.roadSegs = [];
@@ -204,7 +204,7 @@ export function buildWorld(G) {
   const mm = new THREE.Matrix4(), col = new THREE.Color();
   trunks.forEach(([x, z, s], i) => { mm.makeScale(s, s, s); mm.setPosition(x, 0, z); tIM.setMatrixAt(i, mm); });
   crowns.forEach(([x, z, s], i) => { const sy = s * R(0.9, 1.25); mm.makeScale(s * R(0.9, 1.2), sy, s * R(0.9, 1.2)); mm.setPosition(x, 0, z); cIM.setMatrixAt(i, mm); cIM.setColorAt(i, col.setHSL(R(0.22, 0.3), R(0.35, 0.55), R(0.17, 0.27))); });
-  tIM.castShadow = cIM.castShadow = true; scene.add(tIM, cIM);
+  tIM.castShadow = cIM.castShadow = true; scene.add(tIM, cIM); G.trees = { list: crowns, trunks: tIM, crowns: cIM };
 
   // ---------------- Straßenlaternen ----------------
   const lampGeo = new THREE.CylinderGeometry(0.08, 0.12, 6, 6);
@@ -212,8 +212,7 @@ export function buildWorld(G) {
     const dx = s.b[0] - s.a[0], dz = s.b[1] - s.a[1], len = Math.hypot(dx, dz); if (len < 20) continue; const nx = -dz / len, nz = dx / len;
     for (let t = 10; t < len; t += 26) { const x = s.a[0] + dx / len * t + nx * (s.w / 2 + 1), z = s.a[1] + dz / len * t + nz * (s.w / 2 + 1);
       if (x > 370 || Math.hypot(x + 20, z) > 430) continue;
-      B.add(lampGeo, M('#2c3136', { metalness: 0.6 }), x, 3, z);
-      B.add(new THREE.SphereGeometry(0.32, 8, 6), Glow('#ffd59a', 3), x, 6.1, z);
+      G.lampSpots = G.lampSpots || []; G.lampSpots.push({ x, z, ang: Math.atan2(-dz, dx) + Math.PI / 2 });
       G.glowSpots = G.glowSpots || []; G.glowSpots.push([x, z, '#ffcf8a', 8]); }
   }
 

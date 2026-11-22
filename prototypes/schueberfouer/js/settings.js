@@ -1,13 +1,13 @@
 // Einstellungen: Standardwerte, Presets, Speichern (localStorage, optional) und Beschreibung fürs Optionsmenü
 export const PRESETS = {
-  niddreg: { renderScale: 0.75, shadows: 'aus', ao: false, bloom: 0.8, aa: 'fxaa', crowd: 250, lights: 4, texHigh: false, drawDist: 0.8, grain: 0, vignette: 0.25 },
-  mettel: { renderScale: 1, shadows: 'niddreg', ao: false, bloom: 1, aa: 'fxaa', crowd: 500, lights: 6, texHigh: true, drawDist: 1, grain: 0.04, vignette: 0.35 },
-  heich: { renderScale: 1, shadows: 'heich', ao: false, bloom: 1, aa: 'smaa', crowd: 850, lights: 10, texHigh: true, drawDist: 1.2, grain: 0.05, vignette: 0.35 },
-  ultra: { renderScale: 1.25, shadows: 'ultra', ao: true, bloom: 1.1, aa: 'smaa', crowd: 1200, lights: 14, texHigh: true, drawDist: 1.4, grain: 0.05, vignette: 0.4 },
+  niddreg: { reflections: 'aus', grass: 'aus', steam: false, renderScale: 0.75, shadows: 'aus', ao: false, bloom: 0.8, aa: 'fxaa', crowd: 250, lights: 4, texHigh: false, drawDist: 0.8, grain: 0, vignette: 0.25 },
+  mettel: { reflections: 'niddreg', grass: 'niddreg', steam: true, renderScale: 1, shadows: 'niddreg', ao: false, bloom: 1, aa: 'fxaa', crowd: 500, lights: 6, texHigh: true, drawDist: 1, grain: 0.04, vignette: 0.35 },
+  heich: { reflections: 'heich', grass: 'heich', steam: true, renderScale: 1, shadows: 'heich', ao: false, bloom: 1, aa: 'smaa', crowd: 850, lights: 10, texHigh: true, drawDist: 1.2, grain: 0.05, vignette: 0.35 },
+  ultra: { reflections: 'ultra', grass: 'heich', steam: true, renderScale: 1.25, shadows: 'ultra', ao: true, bloom: 1.1, aa: 'smaa', crowd: 1200, lights: 14, texHigh: true, drawDist: 1.4, grain: 0.05, vignette: 0.4 },
 };
 export const DEFAULTS = {
   // Grafik
-  preset: 'heich', ...PRESETS.heich, fov: 65, tonemap: 'aces', exposure: 1, saturation: 1.05, contrast: 1.04, chroma: 0.15, showFps: false,
+  preset: 'heich', ...PRESETS.heich, fov: 65, tonemap: 'aces', searchlights: true, lensflare: true, exposure: 1, saturation: 1.05, contrast: 1.04, chroma: 0.15, showFps: false,
   // Kamera
   sens: 1, invertY: false, camDist: 5.2, headBob: true, shake: true, autoCenter: false,
   // Toun
@@ -17,6 +17,7 @@ export const DEFAULTS = {
   // Accessibilitéit
   uiScale: 1, reduceFlash: false, reduceMotion: false, colorblind: 'keen', subtitles: true, highContrast: false,
   // Steierung
+  cloudUrl: '', cloudToken: '',
   keys: { fwd: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', run: 'ShiftLeft', jump: 'Space', act: 'KeyE', compass: 'KeyQ', map: 'KeyM', journal: 'KeyJ', wardrobe: 'KeyI', view: 'KeyV', photo: 'KeyP', time: 'KeyT' },
   // Aussehen der Figur
   look: { skin: '#e8b98f', hair: '#3b2a1a', hairStyle: 0, shirt: '#2b2d42', pants: '#1d3557', shoes: '#1a1a1a', height: 1.0 },
@@ -41,6 +42,11 @@ export const OPTION_PAGES = [
     { k: 'renderScale', t: 'sld', l: 'Opléisungs-Skaléierung', min: 0.5, max: 1.5, step: 0.05, fmt: v => Math.round(v * 100) + ' %', d: 'Méi niddreg = méi séier, méi héich = méi scharf.' },
     { k: 'shadows', t: 'sel', l: 'Schatten', o: [['aus', 'Aus'], ['niddreg', 'Niddreg'], ['heich', 'Héich'], ['ultra', 'Ultra']] },
     { k: 'ao', t: 'tog', l: 'Ambient Occlusion (GTAO)', d: 'Realistesch Kontaktschatten an Ecken. Brauch eng staark Grafikkaart.' },
+    { k: 'reflections', t: 'sel', l: 'Spigelungen (Asphalt & Stroossen)', o: [['aus', 'Aus'], ['niddreg', 'Niddreg'], ['heich', 'Héich'], ['ultra', 'Ultra (mat Leit)']], d: 'Planar Reflexiounen: d\'Kirmesluuchten spigele sech am Asphalt – besonnesch bei Reen.' },
+    { k: 'grass', t: 'sel', l: 'Gras & Vegetatioun', o: [['aus', 'Aus'], ['niddreg', 'Niddreg'], ['heich', 'Héich']], d: 'Gëllt nom Neistart.' },
+    { k: 'searchlights', t: 'tog', l: 'Sichscheinwerfer am Himmel' },
+    { k: 'steam', t: 'tog', l: 'Damp iwwer de Fritten- a Fëschstänn' },
+    { k: 'lensflare', t: 'tog', l: 'Lens-Flare (Sonn)' },
     { k: 'aa', t: 'sel', l: 'Kantenglättung', o: [['aus', 'Aus'], ['fxaa', 'FXAA'], ['smaa', 'SMAA']] },
     { k: 'bloom', t: 'sld', l: 'Luucht-Bloom', min: 0, max: 1.6, step: 0.05, fmt: v => Math.round(v * 100) + ' %' },
     { k: 'lights', t: 'sld', l: 'Dynamesch Luuchten', min: 2, max: 16, step: 1, fmt: v => v, d: 'Zuel vun echte Liichtquellen ronderëm dech.' },
@@ -83,6 +89,7 @@ export const OPTION_PAGES = [
     { k: 'autosave', t: 'tog', l: 'Automatesch späicheren' },
   ] },
   { id: 'steierung', label: 'Steierung', items: [] },
+  { id: 'cloud', label: 'Cloud Gaming', items: [] },
   { id: 'access', label: 'Accessibilitéit', items: [
     { k: 'uiScale', t: 'sld', l: 'Gréisst vun der Benotzeruewerfläch', min: 0.8, max: 1.4, step: 0.05, fmt: v => Math.round(v * 100) + ' %' },
     { k: 'reduceFlash', t: 'tog', l: 'Blëtzer & Blinklicht reduzéieren', d: 'Fir Leit mat Photosensibilitéit: keng Blinklichter, mëllt Freedefeier.' },

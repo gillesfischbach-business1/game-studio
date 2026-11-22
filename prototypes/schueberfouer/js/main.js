@@ -19,8 +19,11 @@ import { Player, Input } from './player.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
-import { configureTextures, makeSky, wetUniform } from './tex.js';
+import { configureTextures, makeSky, wetUniform, reflU } from './tex.js';
 import { loadSettings, saveSettings, PRESETS } from './settings.js';
+import { loadProps, placeProps } from './props.js';
+import { CloudClient } from './cloud.js';
+import { setupReflection, buildFoliage, buildGrass, buildSearchlights, buildSteam, buildLensflare, updateFx } from './fx.js';
 
 const params = new URLSearchParams(location.search);
 const isMobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || (matchMedia('(pointer:coarse)').matches && innerWidth < 1100);
@@ -88,6 +91,10 @@ async function boot() {
   setLoad(0.55, 'Attraktiounen montéieren …'); await frame();
   buildRides(G);
   G.finishFair();
+  setLoad(0.62, '3D-Modeller & Beem lueden …');
+  try { placeProps(G, await loadProps()); } catch (e) { console.warn('Props', e); }
+  try { await buildFoliage(G); } catch (e) { console.warn('Foliage', e); }
+  buildGrass(G); buildSearchlights(G); buildSteam(G); buildLensflare(G);
   scene.traverse(o => { if (o.isMesh && !o.isInstancedMesh && !o.material?.transparent && !(o.material instanceof THREE.ShaderMaterial) && !(o.material instanceof THREE.MeshBasicMaterial)) { o.geometry.computeBoundingSphere?.(); o.castShadow = (o.geometry.boundingSphere?.radius ?? 0) < 70; o.receiveShadow = true; } });
   G.lightSpots = (G.lightSpots || []).concat(Object.values(G.rides).map(r => ({ u: r.cfg.u, v: r.cfg.v, color: r.col || '#ffd9a0' })));
   G.lightSpotsW = G.lightSpots.map(s => { const w = L(s.u, s.v); return { x: w.x, z: w.z, color: new THREE.Color(s.color) }; });
@@ -102,7 +109,7 @@ async function boot() {
   G.input = new Input(G, renderer.domElement);
   G.audio = new Audio(G);
   G.game = new Game(G);
-  G.rain = makeRain(); scene.add(G.rain);
+  G.rain = makeRain(); scene.add(G.rain); G.cloud = new CloudClient(G);
   setLoad(0.9, 'Luuchten unmaachen …'); await frame();
 
   const composer = new EffectComposer(renderer);
@@ -116,7 +123,7 @@ async function boot() {
   Object.assign(G, { composer, bloom, gtao, grade, fxaa, smaa });
   const resize = () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); const pr = Math.min(devicePixelRatio, 2) * G.settings.renderScale; renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight); composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight); fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr)); };
   addEventListener('resize', resize); G.resize = resize;
-  G.applySettings = applySettings; applySettings(true);
+  G.applySettings = applySettings; applySettings(true); setupReflection(G); G._refl = G.settings.reflections;
 
   G.minutes = TIME.start; G.day = DAYS[0];
   applyTime(0);
@@ -127,8 +134,8 @@ async function boot() {
   renderer.setAnimationLoop(() => {
     const now = performance.now(); let dt = Math.min(0.05, (now - last) / 1000); last = now; acc += dt; frames++;
     if (acc > 0.5) { G.fps = frames / acc; acc = 0; frames = 0; }
-    step(dt);
-    if (G.altRender) G.altRender(dt); else composer.render();
+    G.frameNo = (G.frameNo || 0) + 1; step(dt);
+    if (G.cloudActive) { /* Bild kommt aus der Cloud */ } else if (G.altRender) G.altRender(dt); else composer.render();
     if (G.wantShot) { const f = G.wantShot; G.wantShot = null; f(renderer.domElement.toDataURL('image/png')); }
   });
 }
@@ -158,6 +165,7 @@ function applySettings(first = false) {
   document.body.classList.toggle('hc', !!S.highContrast);
   G.ui?.applyHud?.();
   if (G.player) G.player.camDistT = S.camDist;
+  if (!first && G._refl !== S.reflections) { G._refl = S.reflections; setupReflection(G); }
   if (!first) G.saveSettings();
 }
 
@@ -173,7 +181,7 @@ function applyTime(dt) {
   const az = Math.PI * (0.35 + dayFrac * 1.2);
   const sd = new THREE.Vector3(Math.cos(az) * Math.cos(Math.max(elev, -0.2)), Math.sin(elev), Math.sin(az) * Math.cos(Math.max(elev, -0.2))).normalize();
   const su = G.sky.material.uniforms; const wd = Math.max(0, 1 - night - dusk), wk = dusk, wn = night; const sum = wd + wk + wn || 1;
-  su.wDay.value = wd / sum; su.wDusk.value = wk / sum; su.wNight.value = wn / sum; su.overcast.value = ov * 0.85; su.t.value = G.time; su.rot.value = -az / (Math.PI * 2) + 0.2;
+  su.wDay.value = wd / sum; su.wDusk.value = wk / sum; su.wNight.value = wn / sum; su.overcast.value = ov * 0.85; su.t.value = G.time; su.rot.value = -az / (Math.PI * 2) + 0.2 + (G.cloudDrift || 0); G.sunDir = sd;
   su.horizon.value.set('#7d8a96').lerp(_c2.set('#ff9a62'), dusk * 0.5).lerp(_c2.set('#0c0d1a'), night);
   G.scene.fog.color.copy(su.horizon.value).lerp(_c2.set('#8a8f96'), ov * (1 - night) * 0.6);
   G.scene.fog.density = lerp(0.0014, 0.0022, night) * (1 + ov * 1.4) / S.drawDist;
@@ -188,13 +196,14 @@ function applyTime(dt) {
   G.renderer.toneMappingExposure = lerp(0.9, 1.0, night) * S.exposure;
   if (G.bloom) { G.bloom.strength = lerp(0.18, 0.62, night) * S.bloom; G.bloom.threshold = lerp(0.97, 0.88, night); G.bloom.radius = 0.28; }
   bulbUniforms.uOn.value = lerp(0.6, 1, night);
-  if (G.glowMat) G.glowMat.opacity = lerp(0.05, 0.5, night) * (1 + ov * 0.3);
+  if (G.glowMat) G.glowMat.opacity = lerp(0.05, 0.42, night) * (1 - wetUniform.value * 0.35);
   if (!G._nightMats) { G._nightMats = []; G.scene.traverse(o => { if (o.material?.userData?.night && !G._nightMats.includes(o.material)) G._nightMats.push(o.material); }); }
   for (const mt of G._nightMats) mt.emissiveIntensity = night * 0.9;
   if (G.gatePanelMat) G.gatePanelMat.emissiveIntensity = 0.05 + night * 0.3;
   const raining = w === 'reen'; wetUniform.value = dt ? lerp(wetUniform.value, raining ? 1 : 0, Math.min(1, dt * 0.3)) : (raining ? 1 : 0);
   G.rain.visible = raining; G.rain.material.uniforms.uTime.value = G.time; G.rain.position.copy(G.camera.position);
   G.grade.uniforms.uRain.value = wetUniform.value; G.grade.uniforms.uTime.value = G.time;
+  reflU.uReflOn.value = G.reflector ? Math.min(1, 0.25 + 0.75 * night + wetUniform.value) : 0;
 }
 G.applyTimeNow = () => applyTime(0);
 
@@ -224,6 +233,7 @@ function step(dt) {
     G.crowd.update(dt, G.player);
     G.game.update(dt);
   } else if (G.ui.menuCam) G.ui.menuCam(realDt);
+  updateFx(G, realDt);
   applyTime(realDt);
   lightTimer -= realDt;
   if (lightTimer < 0 && G.lightSpotsW) {

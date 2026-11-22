@@ -161,7 +161,15 @@ export class Menu {
     const dayOpts = DAYS.map((d, i) => [i, d.label]);
     const val = (it) => it.k === '_time' ? (G.minutes % 1440) / 60 + ((G.minutes % 1440) < 60 ? 24 : 0) : it.k === '_day' ? DAYS.indexOf(G.day) : it.k === '_daypreset' ? '' : S[it.k];
     let rows = '';
-    if (page.id === 'steierung') {
+    if (page.id === 'cloud') {
+      const st = G.cloud?.state || 'aus';
+      rows = `<div class="pm-cloud"><p>Mat Cloud Gaming leeft d'Spill op enger Grafikkaart am Rechenzentrum (z. B. eng High-End-Versioun an Unity oder Unreal) an Dir kritt just d'Bild als Video gestreamt – och op schwaachen Handyen. Ënnerstëtzt gëtt de WebRTC-Standard <b>WHEP</b>.</p>
+        <div class="opt"><label>WHEP-Server-URL</label><input id="curl" type="url" placeholder="https://mäin-server.lu/whep/schueberfouer" value="${esc(S.cloudUrl)}"></div>
+        <div class="opt"><label>Zougangs-Token (optional)</label><input id="ctok" type="password" value="${esc(S.cloudToken)}"></div>
+        <div class="opt"><label>Status</label><span class="ro">${esc(st)}</span></div>
+        <button class="pm-cta" id="cgo">${G.cloudActive ? 'Trennen' : 'Verbannen'}</button>
+        <p class="pm-note">Hiweis: An dëser Artifact-Versioun blockéiert d'Sécherheetsrichtlinn Verbindunge mat friemen Serveren. Cloud Gaming funktionéiert, soubal d'Spill op engem eegene Webserver läit. Detailer: docs/architecture/ADR-0001-cloud-rendering.md.</p><p class="pm-note" id="cmsg"></p></div>`;
+    } else if (page.id === 'steierung') {
       rows = Object.entries(KEY_LABELS).map(([k, l]) => `<div class="opt" data-key="${k}"><label>${l}</label><button class="kb" data-bind="${k}">${KEYNAME(S.keys[k])}</button></div>`).join('') +
         `<div class="opt"><label>Gamepad</label><span class="ro">${navigator.getGamepads && [...navigator.getGamepads()].some(p => p) ? 'Verbonnen ✔' : 'Xbox/PlayStation-Controller ënnerstëtzt – einfach uschléissen'}</span></div>
          <div class="pm-pad"><b>Gamepad:</b> Lénke Stick lafen · Rietse Stick kucken · A Aktioun · X sprangen · Y Kompass · B zeréck · LB Kaart · RB Kamera · LT lafen · Start Menü</div>
@@ -189,6 +197,8 @@ export class Menu {
     body.querySelectorAll('.sel button').forEach(b => b.onclick = () => { const it = page.items.find(x => x.k === b.dataset.k); const o = it.k === '_day' ? dayOpts : it.o; const cur = val(it); let i = o.findIndex(x => String(x[0]) === String(cur)); i = (i + +b.dataset.d + o.length) % o.length; set(it.k, o[i][0]); G.audio.click(); this.optTab(body); });
     body.querySelectorAll('.sld input').forEach(inp => inp.oninput = () => { const it = page.items.find(x => x.k === inp.dataset.k); set(it.k, +inp.value); inp.nextElementSibling.textContent = it.fmt(+inp.value); });
     body.querySelectorAll('.kb').forEach(b => b.onclick = () => { b.textContent = 'Dréck eng Tast …'; b.classList.add('wait'); this.capture = (code) => { S.keys[b.dataset.bind] = code; G.saveSettings(); this.capture = null; this.optTab(body); }; });
+    const cg = $('#cgo'); if (cg) cg.onclick = async () => { S.cloudUrl = $('#curl').value.trim(); S.cloudToken = $('#ctok').value; G.saveSettings();
+      try { if (G.cloudActive) await G.cloud.disconnect(); else { if (!S.cloudUrl) throw new Error('Gëff eng Server-URL an.'); await G.cloud.connect(S.cloudUrl, S.cloudToken); this.close(); return; } } catch (e) { $('#cmsg').textContent = 'Konnt net verbannen: ' + e.message; return; } this.optTab(body); };
     const kr = $('#kreset'); if (kr) kr.onclick = () => { S.keys = structuredClone(DEFAULTS.keys); G.saveSettings(); this.optTab(body); };
   }
   onKey(e) {
