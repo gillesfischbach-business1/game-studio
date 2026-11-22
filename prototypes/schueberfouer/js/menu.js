@@ -13,6 +13,13 @@ const HAIRS = ['#111111', '#2b1b0e', '#4a2f1b', '#7a5230', '#b5651d', '#c9a66b',
 const CLOTH = ['#2b2d42', '#1d3557', '#457b9d', '#e63946', '#f1faee', '#2a9d8f', '#e9c46a', '#f4a261', '#264653', '#8338ec', '#ff006e', '#222222', '#6a994e', '#bc4749', '#ffffff', '#d4a373'];
 const KEYNAME = c => ({ Space: 'Leerzeechen', ShiftLeft: 'Shift', ShiftRight: 'Shift R', ControlLeft: 'Strg', AltLeft: 'Alt', Tab: 'Tab', Enter: 'Enter', Escape: 'Esc' }[c] || c.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Arrow/, '↑ ').replace('↑ Down', '↓').replace('↑ Left', '←').replace('↑ Right', '→'));
 
+/** Hinweis je nach Umgebung: Android-App, claude.ai-Artifact oder eigener Webserver */
+function cloudHint() {
+  if (window.Capacitor?.isNativePlatform?.()) return 'An der Android-App funktionéiert Cloud Gaming, soubal en WHEP-Server ugi gëtt an den Handy Internet huet.';
+  if (/claude\.ai|claudeusercontent/.test(location.hostname) || window.self !== window.top) return 'Hiweis: An dëser Artifact-Versioun blockéiert d\'Sécherheetsrichtlinn Verbindunge mat friemen Serveren. Cloud Gaming funktionéiert, soubal d\'Spill op engem eegene Webserver läit.';
+  return 'Cloud Gaming brauch e WHEP-kompatibele Server (Detailer: docs/architecture/ADR-0001-cloud-rendering.md).';
+}
+
 export class Menu {
   constructor(ui) { this.ui = ui; this.G = ui.G; this.tab = 'kaart'; this.optPage = 'grafik'; this.wardCat = 'figur'; }
 
@@ -168,7 +175,7 @@ export class Menu {
         <div class="opt"><label>Zougangs-Token (optional)</label><input id="ctok" type="password" value="${esc(S.cloudToken)}"></div>
         <div class="opt"><label>Status</label><span class="ro">${esc(st)}</span></div>
         <button class="pm-cta" id="cgo">${G.cloudActive ? 'Trennen' : 'Verbannen'}</button>
-        <p class="pm-note">Hiweis: An dëser Artifact-Versioun blockéiert d'Sécherheetsrichtlinn Verbindunge mat friemen Serveren. Cloud Gaming funktionéiert, soubal d'Spill op engem eegene Webserver läit. Detailer: docs/architecture/ADR-0001-cloud-rendering.md.</p><p class="pm-note" id="cmsg"></p></div>`;
+        <p class="pm-note">${cloudHint()}</p><p class="pm-note" id="cmsg"></p></div>`;
     } else if (page.id === 'steierung') {
       rows = Object.entries(KEY_LABELS).map(([k, l]) => `<div class="opt" data-key="${k}"><label>${l}</label><button class="kb" data-bind="${k}">${KEYNAME(S.keys[k])}</button></div>`).join('') +
         `<div class="opt"><label>Gamepad</label><span class="ro">${navigator.getGamepads && [...navigator.getGamepads()].some(p => p) ? 'Verbonnen ✔' : 'Xbox/PlayStation-Controller ënnerstëtzt – einfach uschléissen'}</span></div>
