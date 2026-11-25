@@ -26,7 +26,7 @@ export const KEY_LABELS = { fwd: 'Vir', back: 'Zeréck', left: 'Lénks', right: 
 
 export function loadSettings(isMobile) {
   let s = structuredClone(DEFAULTS);
-  if (isMobile) Object.assign(s, { preset: 'mettel', ...PRESETS.mettel, renderScale: 0.85 });
+  if (isMobile) Object.assign(s, { preset: 'mettel', ...PRESETS.mettel, renderScale: 0.85, shadows: 'aus', reflections: 'aus', grass: 'aus', crowd: 280, lights: 2, steam: false });
   try { const d = JSON.parse(localStorage.getItem('fouer2026_settings') || 'null'); if (d) { s = { ...s, ...d, keys: { ...s.keys, ...(d.keys || {}) }, look: { ...s.look, ...(d.look || {}) } }; } } catch (e) { /* ohne Speicher */ }
   const q = new URLSearchParams(location.search).get('q'); const map = { low: 'niddreg', mid: 'mettel', high: 'heich', ultra: 'ultra' };
   if (q && map[q]) Object.assign(s, { preset: map[q], ...PRESETS[map[q]] });

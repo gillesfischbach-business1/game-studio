@@ -228,6 +228,9 @@ body.vr #ui { opacity: 0; }
 .wi .ic { font-size: 22px; width: 30px; text-align: center; } .wi .nm { font-weight: 700; font-size: 14px; } .wi small { display: block; font-weight: 400; opacity: .7; font-size: 12px; }
 .pm-wp input[type=range] { width: 100%; accent-color: var(--acc); }
 body.menu-open #hud, body.menu-open #touch { visibility: hidden; }
+@media (pointer: coarse) { #keys { display: none !important; } }
+.pm-close { position: fixed; top: 10px; right: 12px; z-index: 2; width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.45); color: #fff; font-size: 22px; }
+@media (max-width: 900px) { .pm-ol, .pm-wl { display: flex; overflow-x: auto; gap: 4px; scrollbar-width: none; } .pm-ol button, .pm-wl button { white-space: nowrap; width: auto; font-size: 14px; padding: 6px 10px; border-left: none; border-bottom: 3px solid transparent; } .pm-ol button.on, .pm-wl button.on { border-bottom-color: var(--acc); } .pm-ol .pm-sec { margin-top: 0; } .pm-opt, .pm-ward { grid-template-rows: auto 1fr; gap: 10px; } .pm-brand { display: none; } .pm-top { gap: 8px; padding-right: 64px; } .pm-tabs button { font-size: 14px; padding: 8px 9px; letter-spacing: 1px; } .pm-foot { display: none; } .pm-body { top: 64px; bottom: 12px; } }
 @media (max-width: 1250px) { .pm-info span:last-child { display: none; } }
 /* HUD modernisiert */
 #clock b, #wallet b, #mission b, #rideHud b { font-family: var(--hud) !important; letter-spacing: 1px; }

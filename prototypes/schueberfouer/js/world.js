@@ -17,16 +17,22 @@ export function buildWorld(G) {
 
   // Glacis-Asphalt (Fotoscan) + Parkplatz-Markierungen als Decal (die Glacis ist sonst ein Parkplatz!)
   const shape = new THREE.Shape(GLACIS_POLY.map(([x, z]) => new THREE.Vector2(x, -z)));
-  const glacis = new THREE.Mesh(new THREE.ShapeGeometry(shape), pbr('asphalt', { tile: 5, plane: 'xz', color: '#9a9a9e', reflect: true }));
+  const glacis = new THREE.Mesh(new THREE.ShapeGeometry(shape), pbr('asphalt', { tile: 5, plane: 'xz', color: '#a6a6a8', reflect: true, envMapIntensity: 0.45 }));
   glacis.rotation.x = -Math.PI / 2; glacis.position.y = 0.03; glacis.receiveShadow = true; scene.add(glacis);
+  // Vorrang vor der Wiese darunter: bei geringer Tiefengenauigkeit (Handy, AO-Tiefenpuffer) schimmerte sonst Gras durch den Asphalt
+  glacis.material.polygonOffset = true; glacis.material.polygonOffsetFactor = -1; glacis.material.polygonOffsetUnits = -4;
   const lines = canvasTex(512, 512, (g, w, h) => {
-    g.clearRect(0, 0, w, h); g.strokeStyle = 'rgba(240,240,235,0.75)'; g.lineWidth = 6;
+    g.clearRect(0, 0, w, h); g.strokeStyle = 'rgba(214,211,200,0.7)'; g.lineWidth = 6;
     for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(i * w / 4 + 3, 0); g.lineTo(i * w / 4 + 3, h * 0.42); g.stroke(); g.beginPath(); g.moveTo(i * w / 4 + 3, h * 0.58); g.lineTo(i * w / 4 + 3, h); g.stroke(); }
     g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
-    const img = g.getImageData(0, 0, w, h); for (let i = 3; i < img.data.length; i += 4) img.data[i] *= 0.55 + Math.random() * 0.45; g.putImageData(img, 0, 0);
+    // abgefahrene Farbe: fleckig weggeriebene Stellen statt sauberer Linien
+    g.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 420; i++) { g.globalAlpha = 0.25 + Math.random() * 0.55; g.beginPath(); g.ellipse(Math.random() * w, Math.random() * h, 2 + Math.random() * 14, 1 + Math.random() * 5, Math.random() * 3.14, 0, 6.29); g.fill(); }
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+    const img = g.getImageData(0, 0, w, h); for (let i = 3; i < img.data.length; i += 4) img.data[i] *= 0.5 + Math.random() * 0.3; g.putImageData(img, 0, 0);
   });
   lines.wrapS = lines.wrapT = THREE.RepeatWrapping; lines.repeat.set(1 / 10, 1 / 10); lines.rotation = 0.6524;
-  const lineMesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshStandardMaterial({ map: lines, transparent: true, roughness: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  const lineMesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshStandardMaterial({ map: lines, transparent: true, roughness: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -8 }));
   lineMesh.rotation.x = -Math.PI / 2; lineMesh.position.y = 0.045; lineMesh.receiveShadow = true; scene.add(lineMesh);
 
   // ---------------- Straßen ----------------

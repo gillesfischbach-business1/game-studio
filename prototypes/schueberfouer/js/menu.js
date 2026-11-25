@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { DAYS, TIME, CLOTHES, SOUVENIRS, GLACIS_POLY, TRAM, ENTRANCES, RESTAURANTS, L } from './data.js';
 import { OPTION_PAGES, KEY_LABELS, PRESETS, DEFAULTS } from './settings.js';
 import { MISSIONS, EGGS } from './game.js';
-import { euro } from './util.js';
+import { euro, keyText } from './util.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -12,6 +12,13 @@ const SKINS = ['#ffe0c4', '#f1c27d', '#e8b98f', '#e0ac69', '#c68642', '#a0663f',
 const HAIRS = ['#111111', '#2b1b0e', '#4a2f1b', '#7a5230', '#b5651d', '#c9a66b', '#e6c98f', '#8d8d8d', '#d8d8d8', '#a83232', '#3a6fd8', '#ff5fa2'];
 const CLOTH = ['#2b2d42', '#1d3557', '#457b9d', '#e63946', '#f1faee', '#2a9d8f', '#e9c46a', '#f4a261', '#264653', '#8338ec', '#ff006e', '#222222', '#6a994e', '#bc4749', '#ffffff', '#d4a373'];
 const KEYNAME = c => ({ Space: 'Leerzeechen', ShiftLeft: 'Shift', ShiftRight: 'Shift R', ControlLeft: 'Strg', AltLeft: 'Alt', Tab: 'Tab', Enter: 'Enter', Escape: 'Esc' }[c] || c.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Arrow/, '↑ ').replace('↑ Down', '↓').replace('↑ Left', '←').replace('↑ Right', '→'));
+
+/** Hinweis je nach Umgebung: Android-App, claude.ai-Artifact oder eigener Webserver */
+function cloudHint() {
+  if (window.Capacitor?.isNativePlatform?.()) return 'An der Android-App funktionéiert Cloud Gaming, soubal en WHEP-Server ugi gëtt an den Handy Internet huet.';
+  if (/claude\.ai|claudeusercontent/.test(location.hostname) || window.self !== window.top) return 'Hiweis: An dëser Artifact-Versioun blockéiert d\'Sécherheetsrichtlinn Verbindunge mat friemen Serveren. Cloud Gaming funktionéiert, soubal d\'Spill op engem eegene Webserver läit.';
+  return 'Cloud Gaming brauch e WHEP-kompatibele Server (Detailer: docs/architecture/ADR-0001-cloud-rendering.md).';
+}
 
 export class Menu {
   constructor(ui) { this.ui = ui; this.G = ui.G; this.tab = 'kaart'; this.optPage = 'grafik'; this.wardCat = 'figur'; }
@@ -64,8 +71,10 @@ export class Menu {
         <nav class="pm-tabs">${tabs.map(([k, l]) => `<button data-t="${k}" class="${k === tab ? 'on' : ''}">${l}</button>`).join('')}</nav>
         <div class="pm-info"><span>${G.day.date}</span><span>${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}</span><span>∞ € · ausgi ${euro(G.game.spent)}</span></div></header>
       <main class="pm-body" id="pmbody"></main>
+      <button class="pm-close" id="pmclose" aria-label="Zou">✕</button>
       <footer class="pm-foot"><span><kbd>Esc</kbd> ${fromTitle ? 'Zréck' : 'Weiderspillen'}</span><span><kbd>←</kbd><kbd>→</kbd> Reiter</span><span><kbd>Klick</kbd> Wielen</span></footer>`;
     root.querySelectorAll('.pm-tabs button').forEach(b => b.onclick = () => { G.audio.click(); this.openPause(b.dataset.t, fromTitle); });
+    $('#pmclose').onclick = () => this.close(); root.querySelector('.pm-tabs .on')?.scrollIntoView?.({ inline: 'center', block: 'nearest' });
     ui.menuCam = null;
     const body = $('#pmbody');
     ({ kaart: () => this.mapTab(body), missiounen: () => this.missionTab(body), garderob: () => this.wardTab(body), statistik: () => this.statTab(body), optiounen: () => this.optTab(body), spill: () => this.gameTab(body) })[tab]();
@@ -105,7 +114,7 @@ export class Menu {
     const M = vis.find(m => m.id === sel);
     body.innerHTML = `<div class="pm-cols"><div class="pm-list">${vis.map(m => `<button data-id="${m.id}" class="${m.id === sel ? 'on' : ''} ${g.done.has(m.id) ? 'done' : ''}"><span>${g.done.has(m.id) ? '✔' : g.active === m.id ? '◆' : '○'}</span>${esc(m.title)}</button>`).join('')}
       <h3>Easter Eggs ${g.eggs.size}/${Object.keys(EGGS).length}</h3><div class="pm-eggs">${Object.entries(EGGS).map(([k, e]) => `<span class="${g.eggs.has(k) ? 'on' : ''}" title="${g.eggs.has(k) ? esc(e.d) : ''}">${g.eggs.has(k) ? esc(e.t) : '???'}</span>`).join('')}</div></div>
-      <div class="pm-detail"><h2>${esc(M.title)}</h2><p>${esc(M.desc)}</p><ul class="pm-steps">${M.steps.map((s, i) => `<li class="${g.prog[M.id + ':' + i] === true ? 'ok' : ''}">${esc(s[2])}</li>`).join('')}</ul><p class="pm-rew">Belounung: ${esc(M.reward)}</p>
+      <div class="pm-detail"><h2>${esc(M.title)}</h2><p>${esc(keyText(M.desc))}</p><ul class="pm-steps">${M.steps.map((s, i) => `<li class="${g.prog[M.id + ':' + i] === true ? 'ok' : ''}">${esc(s[2])}</li>`).join('')}</ul><p class="pm-rew">Belounung: ${esc(M.reward)}</p>
       ${g.done.has(M.id) ? '<p class="pm-ok">Erfëllt ✔</p>' : `<button class="pm-cta" id="track">${g.active === M.id ? 'Gëtt verfollegt' : 'Missioun verfollegen'}</button>`}</div></div>`;
     body.querySelectorAll('.pm-list button').forEach(b => b.onclick = () => { this.selMission = b.dataset.id; this.missionTab(body); });
     const t = $('#track'); if (t) t.onclick = () => { g.active = M.id; g.save(); this.ui.refreshMission(); this.missionTab(body); };
@@ -168,7 +177,7 @@ export class Menu {
         <div class="opt"><label>Zougangs-Token (optional)</label><input id="ctok" type="password" value="${esc(S.cloudToken)}"></div>
         <div class="opt"><label>Status</label><span class="ro">${esc(st)}</span></div>
         <button class="pm-cta" id="cgo">${G.cloudActive ? 'Trennen' : 'Verbannen'}</button>
-        <p class="pm-note">Hiweis: An dëser Artifact-Versioun blockéiert d'Sécherheetsrichtlinn Verbindunge mat friemen Serveren. Cloud Gaming funktionéiert, soubal d'Spill op engem eegene Webserver läit. Detailer: docs/architecture/ADR-0001-cloud-rendering.md.</p><p class="pm-note" id="cmsg"></p></div>`;
+        <p class="pm-note">${cloudHint()}</p><p class="pm-note" id="cmsg"></p></div>`;
     } else if (page.id === 'steierung') {
       rows = Object.entries(KEY_LABELS).map(([k, l]) => `<div class="opt" data-key="${k}"><label>${l}</label><button class="kb" data-bind="${k}">${KEYNAME(S.keys[k])}</button></div>`).join('') +
         `<div class="opt"><label>Gamepad</label><span class="ro">${navigator.getGamepads && [...navigator.getGamepads()].some(p => p) ? 'Verbonnen ✔' : 'Xbox/PlayStation-Controller ënnerstëtzt – einfach uschléissen'}</span></div>
@@ -202,6 +211,7 @@ export class Menu {
     const kr = $('#kreset'); if (kr) kr.onclick = () => { S.keys = structuredClone(DEFAULTS.keys); G.saveSettings(); this.optTab(body); };
   }
   onKey(e) {
+    if (!this.ui.started && !this.ui.menuOpen && e.code === 'Escape') { const sub = $('#tlsub'); if (sub && sub.innerHTML.trim()) { sub.innerHTML = ''; document.querySelectorAll('#tlnav button').forEach(x => x.classList.remove('on')); return true; } }
     if (this.capture) { if (e.code !== 'Escape') this.capture(e.code); else { this.capture = null; this.openPause(this.tab, this.fromTitle); } return true; }
     if (!this.ui.menuOpen) return false;
     if (e.code === 'Escape') { this.close(); return true; }

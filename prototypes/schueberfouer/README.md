@@ -1,6 +1,6 @@
 # Schueberfouer 2026 – Open-World-Kirmes-Simulation (Browser-Prototyp)
 
-**Status:** in Arbeit (spielbare Version 0.3)
+**Status:** in Arbeit (spielbare Version 0.5)
 
 ## Hypothese
 Eine detailgetreue, frei begehbare Simulation der Schueberfouer auf dem Glacis (Stad Lëtzebuerg)
@@ -88,10 +88,23 @@ Gemessen im Test-Browser (Nacht, Mittelallee, Preset „Héich“, alle Render-D
 
 Maßnahmen: räumlich gebündelte statische Geometrie (Frustum-Culling greift), Spiegelung rendert nur Lichter/Schilder/Fahrgeschäfte (Layer 1), Schatten nur bei Bewegung bzw. alle 3–8 Bilder, Detailstufen für die Menschenmenge (Sichtweite, seltenere Updates in der Ferne, leichtere Geometrie), instanzierte Autos/Mitfahrer/Karussellpferde, Hausfassaden in 3 statt 40 Materialien, vereinfachte Laternen/Fässer, kleinerer Licht-Pool, dynamische Auflösung (Ziel 60 FPS) und optionales 30/60-FPS-Limit.
 
+## Version 0.5 – Natürliche Klangkulisse & Optik
+- **Echte Aufnahmen statt Synthesizer** (`assets/audio/`, 5,5 MB, Quellen und Lizenzen in `assets/audio/CREDITS.md`):
+  Menschenmenge in drei Dichten, laute Musik an den Fahrgeschäften (Techno/House am Break Dance, Autoscooter, XXL,
+  BoosterMaxxx …, Polka an der Après-Ski Party, Karussellmusik am Carrousel), Gläserklirren und Anstoßen an Restaurants
+  und Bierbuden, Geschirr und Küchenlärm, Luftgewehr an der Schéissbud, Jahrmarkt-Ausrufer an den Spielbuden,
+  Kichern, Regen aufs Budendach, Feuerwerk am letzten Tag.
+- **Gesprächsfetzen** auf Lëtzebuergesch, Französisch, Deutsch und Portugiesisch von Leuten, die in der Nähe vorbeigehen.
+- **3D-Klang:** jede Quelle sitzt an ihrem Ort (HRTF am PC, Stereo-Panorama am Handy), Entfernung dämpft die Höhen,
+  Lautsprecher-Klang mit Hall zwischen den Fassaden, Limiter gegen Übersteuern. Es spielen immer die 3 nächsten Anlagen.
+- **Optik:** Asphalt neutral grau mit abgefahrenen Parkplatz-Linien, leichter Sommerdunst in der Ferne, nachts warmes
+  Streulicht des Lampenmeers auf dem Boden; behoben: Gras schimmerte bei geringer Tiefengenauigkeit durch den Asphalt.
+- Werkzeuge: `tools/audio/mkaudio.py` (Schnitt, nahtlose Loops, Mono-MP3), `tools/audio/fleurs.py` (Sprachproben).
+
 ## Dateien
 `index.html` (lokal), `artifact.html` (veröffentlichte Variante), `js/data.js` (alle
 Spieldaten), `js/world.js`, `js/fair.js`, `js/rides.js`, `js/npc.js`, `js/player.js`,
-`js/game.js`, `js/ui.js`, `js/menu.js`, `js/settings.js`, `js/tex.js`, `js/audio.js`, `js/main.js`, `assets/tor2026.jpg`, `assets/tex/` (Poly Haven, CC0), `js/props.js`, `js/fx.js`, `js/cloud.js`, `assets/models/` (Poly Haven, CC0, als eingebettetes glTF-JSON), `tools/`, `exports/`.
+`js/game.js`, `js/ui.js`, `js/menu.js`, `js/settings.js`, `js/tex.js`, `js/audio.js`, `js/main.js`, `assets/tor2026.jpg`, `assets/tex/` (Poly Haven, CC0), `js/props.js`, `js/fx.js`, `js/cloud.js`, `assets/models/` (Poly Haven, CC0, als eingebettetes glTF-JSON), `assets/audio/` (Klänge, siehe CREDITS.md), `tools/`, `exports/`.
 
 ## Erkenntnisse (bisher)
 - Die Lichtstimmung entsteht vor allem durch tausende instanzierte Glühbirnen mit Shader-Lauflicht
