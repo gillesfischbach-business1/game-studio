@@ -102,6 +102,14 @@ Maßnahmen: räumlich gebündelte statische Geometrie (Frustum-Culling greift), 
 - **Nachtrag:** echte Blaskapelle für den Hämmelsmarsch (zieht räumlich mit dem Umzug mit), echte Schreie und kräftiger Jubel an laufenden wilden Fahrgeschäften, Antriebsbrummen am nächsten laufenden Fahrgeschäft.
 - Werkzeuge: `tools/audio/mkaudio.py` (Schnitt, nahtlose Loops, Mono-MP3), `tools/audio/fleurs.py` (Sprachproben).
 
+## Version 0.6 – Grafikstile und three.js r187 (in Arbeit)
+- **Grafikstil wählbar** (Optionen → Grafik → „Grafikstil"): *Realistesch* (Standard, Kino-Farbgebung mit warmen Lichtern
+  und kühlen Schatten) und *Neon-Comic* (Tuschekonturen, Farbstufen, blaugrüne Schatten, Hologramm-HUD).
+- **three.js r170 → r187** im Browser (Stufe 1 von ADR-0002, WebGPU). Die Android-App bündelt weiter r170;
+  `js/fx.js` unterstützt beide Versionen.
+- **Bekannter Fehler:** In manchen Testläufen fehlen Asphalt und Parkplatzlinien (die Wiese darunter ist sichtbar).
+  Ursache noch nicht gefunden.
+
 ## Dateien
 `index.html` (lokal), `artifact.html` (veröffentlichte Variante), `js/data.js` (alle
 Spieldaten), `js/world.js`, `js/fair.js`, `js/rides.js`, `js/npc.js`, `js/player.js`,

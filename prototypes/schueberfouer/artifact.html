@@ -1,7 +1,7 @@
 <title>Schueberfouer 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Creepster&family=Nunito:wght@400;700;900&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/" } }</script>
 <style>
 :root { color-scheme: dark; --gold: #ffd166; --pink: #ff4fd8; --cyan: #00f5d4; --ink: #0b0221; --panel: rgba(14, 8, 32, .9); --line: rgba(255, 255, 255, .14); --txt: #f6f1ff; }
 * { box-sizing: border-box; }
@@ -240,6 +240,26 @@ body.menu-open #hud, body.menu-open #touch { visibility: hidden; }
 #keys { display: flex; gap: 14px; font-family: var(--hud); letter-spacing: 1px; text-transform: uppercase; opacity: .75; } #keys kbd { font-size: 11px; padding: 0 6px; margin-right: 5px; }
 #fps { right: 14px; bottom: 10px; font-family: var(--hud); font-size: 13px; opacity: .8; }
 #minimap { border: 2px solid rgba(255,255,255,.25); }
+
+/* ---------- Grafikstil „Neon-Comic“: Hologramm-Tafeln, Neon, Tusche ---------- */
+body.neon { --acc: #35f2e6; --acc2: #ff4fd8; --gold: #35f2e6; --neo: #35f2e6; --neo2: #ff7a3c; --holo: rgba(6, 34, 44, .78); }
+body.neon #clock, body.neon #wallet, body.neon #mission, body.neon .toast, body.neon #prompt, body.neon #rideHud {
+  background: linear-gradient(160deg, rgba(10, 52, 64, .82), rgba(4, 20, 30, .82)) !important; border: 1.5px solid var(--neo) !important; border-radius: 0 !important;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  box-shadow: inset 0 0 18px rgba(53, 242, 230, .22); text-shadow: 0 0 8px rgba(53, 242, 230, .55); color: #d9fffb; filter: drop-shadow(0 0 6px rgba(53, 242, 230, .55)); }
+body.neon #clock { padding: 16px 14px 8px !important; } body.neon #wallet { padding: 16px 14px 8px !important; left: 150px; top: 14px; }
+body.neon #clock::before, body.neon #wallet::before, body.neon #mission::before, body.neon #rideHud::before { position: absolute; top: 2px; left: 12px; font: 600 9px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1.5px; color: var(--neo); opacity: .8; }
+body.neon #clock::before { content: '[CYCLE LOG 1]'; } body.neon #wallet::before { content: '[CREDIT STREAM 2]'; } body.neon #mission::before { content: '[MISSION LOG 3]'; } body.neon #rideHud::before { content: '[RIDE DATA 4]'; }
+body.neon #clock b { color: var(--neo) !important; text-shadow: 0 0 12px var(--neo); } body.neon #wallet b { color: #7dffb0 !important; }
+body.neon #mission { border-color: var(--acc2) !important; padding-top: 18px !important; filter: drop-shadow(0 0 6px rgba(255, 79, 216, .5)); } body.neon #mission::before { color: var(--acc2); } body.neon #mission b { color: #ff9be9 !important; text-shadow: 0 0 10px var(--acc2); }
+body.neon #prompt { border-color: var(--neo2) !important; filter: drop-shadow(0 0 7px rgba(255, 122, 60, .6)); text-shadow: 0 0 8px rgba(255, 122, 60, .6); }
+body.neon #rideHud { padding-top: 18px !important; }
+body.neon #minimap { border: 2px solid var(--neo); box-shadow: 0 0 16px rgba(53, 242, 230, .6), inset 0 0 20px rgba(53, 242, 230, .25); }
+body.neon #stats i, body.neon #stats .bar i { box-shadow: 0 0 8px currentColor; }
+body.neon #touch button, body.neon #stick { border-color: var(--neo) !important; background: rgba(4, 26, 34, .7) !important; box-shadow: 0 0 10px rgba(53, 242, 230, .5), inset 0 0 12px rgba(53, 242, 230, .2); color: #d9fffb; }
+body.neon #keys kbd { background: transparent; border: 1px solid var(--neo); color: var(--neo); box-shadow: 0 0 6px rgba(53, 242, 230, .5); }
+body.neon .tl-logo .k { color: var(--neo); font-style: italic; transform: skewX(-8deg); text-shadow: 0 0 6px #fff, 0 0 18px var(--neo), 0 0 42px var(--neo), 3px 3px 0 #04202a; letter-spacing: 1px; }
+body.neon .toast b { color: var(--neo); }
 body.hc #mission, body.hc .toast, body.hc #prompt { background: #000 !important; border-color: #fff !important; }
 body.hc #clock b, body.hc #wallet { color: #fff; }
 @media (max-width: 900px) { .pm-opt { grid-template-columns: 1fr; } .pm-od { display: none; } .pm-cols, .pm-map { grid-template-columns: 1fr; } .pm-ward { grid-template-columns: 1fr; } .pm-info { display: none; } .tl-nav button { font-size: 22px; } }

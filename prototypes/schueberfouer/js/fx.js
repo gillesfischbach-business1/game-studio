@@ -17,7 +17,8 @@ export function setupReflection(G) {
   reflU.uReflOn.value = 0; if (!scale) return;
   const w = Math.round(innerWidth * scale), h = Math.round(innerHeight * scale);
   const r = new Reflector(new THREE.PlaneGeometry(1400, 1400), { textureWidth: w, textureHeight: h, clipBias: 0.02, color: 0xffffff });
-  r.camera.layers.set(1); if (S.reflections === 'ultra') r.camera.layers.enable(0);
+  // Spiegelkamera: ab three r18x pro Hauptkamera erzeugt (getReflectionCamera), davor r.camera
+  const rc = r.getReflectionCamera ? r.getReflectionCamera(G.camera) : r.camera; rc.layers.set(1); if (S.reflections === 'ultra') rc.layers.enable(0);
   r.rotation.x = -Math.PI / 2; r.position.set(0, 0.05, 0); r.material.colorWrite = false; r.material.depthWrite = false; r.renderOrder = -10; r.castShadow = false; r.receiveShadow = false;
   const dummy = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); dummy.needsUpdate = true;
   const orig = r.onBeforeRender.bind(r); const inv = new THREE.Matrix4(); let last = -1;
