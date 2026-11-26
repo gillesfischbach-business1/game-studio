@@ -107,8 +107,9 @@ Maßnahmen: räumlich gebündelte statische Geometrie (Frustum-Culling greift), 
   und kühlen Schatten) und *Neon-Comic* (Tuschekonturen, Farbstufen, blaugrüne Schatten, Hologramm-HUD).
 - **three.js r170 → r187** im Browser (Stufe 1 von ADR-0002, WebGPU). Die Android-App bündelt weiter r170;
   `js/fx.js` unterstützt beide Versionen.
-- **Bekannter Fehler:** In manchen Testläufen fehlen Asphalt und Parkplatzlinien (die Wiese darunter ist sichtbar).
-  Ursache noch nicht gefunden.
+- **Bekannte Eigenheit:** In den ersten rund 10 Bildern nach dem Spielstart, solange Texturen nachladen, kann der
+  Asphalt in einzelnen Bildern fehlen (die Wiese darunter ist sichtbar). Gemessen per Pixelprobe im Test-Browser
+  (Bilder 5 und 9 betroffen, ab Bild 11 stabil). Dort dauert das wegen ~0,5 Bildern/s rund 20 s.
 
 ## Dateien
 `index.html` (lokal), `artifact.html` (veröffentlichte Variante), `js/data.js` (alle
