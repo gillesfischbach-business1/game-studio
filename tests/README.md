@@ -33,7 +33,7 @@ production/qa/
 | Item | State |
 |---|---|
 | Test directories and `.asmdef` files | created |
-| CI workflow | created, **will fail until the Unity project and `UNITY_LICENSE` exist** |
+| CI workflow | created. Job `Detect Unity project` reports **NOT ASSESSED** and `Run Unity Tests` is skipped until a Unity project is committed; after that it needs `UNITY_LICENSE` |
 | Unity project (`Packages/manifest.json`, `ProjectSettings/`) | **does not exist yet** |
 | `com.unity.test-framework` in `Packages/manifest.json` | **NOT ASSESSED**: there is no `Packages/manifest.json` to check |
 | Game assembly (`Game.asmdef`) | **not created**: there are no game scripts under `Assets/` yet |
@@ -98,5 +98,6 @@ Tests run automatically on every push to `main` and on every pull request.
 A failed test suite blocks merging.
 
 Unity CI needs a `UNITY_LICENSE` secret (GitHub repository settings -> Secrets). License
-management is not automated by this setup. Until the secret exists and a Unity project is
-committed, the workflow fails on every run: that is a missing prerequisite, not a failing test.
+management is not automated by this setup. While no Unity project is committed, the job
+`Detect Unity project` writes a `NOT ASSESSED` warning and `Run Unity Tests` shows as *skipped*:
+no test ran, and that is not a pass. Once a project exists, the test job runs and needs the secret.

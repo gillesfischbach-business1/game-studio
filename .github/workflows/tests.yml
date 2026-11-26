@@ -7,13 +7,38 @@ on:
     branches: [main]
 
 jobs:
+  # Gate: Unity tests can only run once a Unity project is committed. Without one,
+  # this job says so in plain words and the test job is skipped (shown as "skipped",
+  # never as a pass). See tests/README.md, "Before the first test can run".
+  detect:
+    name: Detect Unity project
+    runs-on: ubuntu-latest
+    outputs:
+      unity: ${{ steps.check.outputs.unity }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Check for a Unity project
+        id: check
+        run: |
+          if [ -f ProjectSettings/ProjectVersion.txt ] && [ -f Packages/manifest.json ]; then
+            echo "unity=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Unity project found. Unity tests will run."
+          else
+            echo "unity=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::NOT ASSESSED: no Unity project in this repository (ProjectSettings/ProjectVersion.txt or Packages/manifest.json missing). Unity tests did not run. This is not a pass."
+            echo "### Unity tests: NOT ASSESSED" >> "$GITHUB_STEP_SUMMARY"
+            echo "No Unity project is committed, so no test ran. See tests/README.md." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   test:
     name: Run Unity Tests
+    needs: detect
+    if: needs.detect.outputs.unity == 'true'
     runs-on: ubuntu-latest
 
-    # Prerequisites (see tests/README.md): a Unity project must be committed
-    # (Packages/manifest.json, ProjectSettings/) and the UNITY_LICENSE secret must
-    # exist. Until then this job fails -- a missing prerequisite, not a failing test.
+    # Prerequisite: the UNITY_LICENSE secret must exist (see tests/README.md).
     steps:
       - name: Checkout
         uses: actions/checkout@v7
