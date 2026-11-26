@@ -91,6 +91,19 @@ export function legGeo() {
   part(g, (x, y) => [0, y < -0.42 && y >= -0.84 ? 1 : 0, y < -0.84 ? 1 : 0]);
   return vcol(g, (x, y) => y < -0.84 ? [0.13, 0.13, 0.14] : W1);
 }
+/** Menge: Oberschenkel (Kontur wie legGeo), Drehpunkt Hüfte, Knie bei y = -0.45, unten mit Kappe geschlossen */
+export function thighGeo() {
+  const g = lathe([[0.001, 0.06], [0.09, 0.05], [0.1, -0.05], [0.085, -0.3], [0.066, -0.45], [0.001, -0.48]], 7).toNonIndexed(); g.deleteAttribute('uv');
+  part(g, (x, y) => [0, y < -0.42 ? 1 : 0, 0]); return vcol(g, () => W1);
+}
+/** Menge: Unterschenkel mit Schuh, Drehpunkt Knie (= legGeo um 0.45 nach oben), oben mit Kappe geschlossen. Masken pro Teilstück vor dem Zusammenfügen */
+export function shinGeo() {
+  const SHOE = [0.13, 0.13, 0.14], isShoe = [0, 0, 1], isLow = [0, 1, 0];
+  const l = lathe([[0.001, 0.03], [0.066, 0], [0.07, -0.1], [0.058, -0.3], [0.05, -0.39], [0.001, -0.41]], 7).toNonIndexed(); l.deleteAttribute('uv');
+  const shoe = new THREE.BoxGeometry(0.1, 0.07, 0.25).toNonIndexed(); shoe.deleteAttribute('uv'); shoe.translate(0, -0.425, 0.05);
+  part(l, (x, y) => y < -0.4 ? isShoe : isLow); vcol(l, (x, y) => y < -0.4 ? SHOE : W1); part(shoe, () => isShoe); vcol(shoe, () => SHOE);
+  return BGU.mergeGeometries([l, shoe]);
+}
 /** Arm (Haut) mit Hand; Drehpunkt an der Schulter */
 export function armGeo() {
   const a = lathe([[0.001, 0.02], [0.05, 0.0], [0.048, -0.22], [0.04, -0.3], [0.038, -0.5], [0.03, -0.56], [0.001, -0.57]], 6);
@@ -209,10 +222,10 @@ export class Crowd {
     const blobTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'); const gr = g.createRadialGradient(32, 32, 2, 32, 32, 32); gr.addColorStop(0, 'rgba(0,0,0,0.8)'); gr.addColorStop(0.5, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv); })();
     const blobGeo = new THREE.PlaneGeometry(0.95, 0.95); blobGeo.rotateX(-Math.PI / 2);
     const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
-    this.im = {}; for (const [k, geo, mat] of [['torso', torsoGeo(), torsoMat], ['head', headGeo(), faceMat], ['hair', hairs[0], hairMat], ['hair2', hairs[2], hairMat], ['hair3', hairs[1], hairMat], ['legL', legGeo(), legMat], ['legR', legGeo(), legMat], ['armL', armGeo(), armMat], ['armR', armGeo(), armMat], ['blob', blobGeo, blobMat]]) { const m = new THREE.InstancedMesh(geo, mat, count); m.frustumCulled = false; m.castShadow = false; m.receiveShadow = true; G.scene.add(m); this.im[k] = m; }
+    this.im = {}; for (const [k, geo, mat] of [['torso', torsoGeo(), torsoMat], ['head', headGeo(), faceMat], ['hair', hairs[0], hairMat], ['hair2', hairs[2], hairMat], ['hair3', hairs[1], hairMat], ['legL', thighGeo(), legMat], ['legR', thighGeo(), legMat], ['shinL', shinGeo(), legMat], ['shinR', shinGeo(), legMat], ['armL', armGeo(), armMat], ['armR', armGeo(), armMat], ['blob', blobGeo, blobMat]]) { const m = new THREE.InstancedMesh(geo, mat, count); m.frustumCulled = false; m.castShadow = false; m.receiveShadow = true; G.scene.add(m); this.im[k] = m; }
     const c = new THREE.Color();
     const aSkin = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3), aStyle = new THREE.InstancedBufferAttribute(new Float32Array(count), 1), aFace = new THREE.InstancedBufferAttribute(new Float32Array(count), 1);
-    for (const k of ['torso', 'legL', 'legR', 'armL', 'armR']) { this.im[k].geometry.setAttribute('aSkin', aSkin); this.im[k].geometry.setAttribute('aStyle', aStyle); }
+    for (const k of ['torso', 'legL', 'legR', 'shinL', 'shinR', 'armL', 'armR']) { this.im[k].geometry.setAttribute('aSkin', aSkin); this.im[k].geometry.setAttribute('aStyle', aStyle); }
     this.im.head.geometry.setAttribute('aFace', aFace);
     this.a = [];
     const nOut = Math.round(count * 0.1); const vendors = G.vendors || [];
@@ -230,13 +243,15 @@ export class Crowd {
       const fem = rand() < 0.5; aFace.setX(i, kid ? pick([0, 3]) : fem ? pick([0, 2, 3, 3]) : pick([0, 0, 1, 1, 2]));
       o.w = kid ? R(0.92, 1.02) : fem ? R(0.86, 1.0) : R(0.98, 1.16); o.hairK = !fem && rand() < 0.1 ? -1 : fem ? pick([1, 1, 2, 2, 0]) : pick([0, 0, 0, 2]);
       o.sleeve = longSl ? (isVendor ? '#f1faee' : shirt) : skin;
-      this.im.head.setColorAt(i, c.set(skin)); this.im.hair.setColorAt(i, c.set(hairC)); this.im.hair2.setColorAt(i, c.set(hairC)); this.im.hair3.setColorAt(i, c.set(hairC)); this.im.legL.setColorAt(i, c.set(pants)); this.im.legR.setColorAt(i, c.set(pants));
+      this.im.head.setColorAt(i, c.set(skin)); this.im.hair.setColorAt(i, c.set(hairC)); this.im.hair2.setColorAt(i, c.set(hairC)); this.im.hair3.setColorAt(i, c.set(hairC)); this.im.legL.setColorAt(i, c.set(pants)); this.im.legR.setColorAt(i, c.set(pants)); this.im.shinL.setColorAt(i, c.set(pants)); this.im.shinR.setColorAt(i, c.set(pants));
       this.im.armL.setColorAt(i, c.set(o.sleeve)); this.im.armR.setColorAt(i, c.set(o.sleeve));
+      // Gang: gf = Schrittfrequenz (rad pro Meter), ga = Hüftausschlag, gb = Wippen, gk = Kniebeugung, g = geglättetes Gehgewicht 0..1 (Kinder: schneller, federnder)
+      o.gf = kid ? 7.6 : 5.4 / o.s; o.ga = kid ? 0.5 : 0.36 + 0.07 * o.speed; o.gb = kid ? 0.048 : 0.035; o.gk = kid ? 1.0 : 0.9; o.g = 0;
       this.a.push(o);
     }
     for (const m of Object.values(this.im)) if (m.instanceColor) m.instanceColor.needsUpdate = true;
     this.grid = new Map(); this.frame = 0;
-    this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._e = new THREE.Euler(0, 0, 0, 'YXZ'); this._p = new THREE.Vector3(); this._s = new THREE.Vector3();
+    this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._e = new THREE.Euler(0, 0, 0, 'YXZ'); this._p = new THREE.Vector3(); this._s = new THREE.Vector3(); this._z = new THREE.Matrix4().makeScale(0, 0, 0);
   }
   /** Anzahl sichtbarer Besucher (Optionen) */
   setActive(n) { const v = (this.G.vendors || []).length; this.active = Math.min(this.a.length, Math.max(v, Math.round(n) + v)); for (const m of Object.values(this.im)) m.count = this.active; }
@@ -275,26 +290,50 @@ export class Crowd {
       // Detailstufen: weit weg -> unsichtbar, mittel -> nur jedes 3. Bild aktualisieren
       if (d2 > cut2) { if (!o.hid) { o.hid = true; this.hide(i); } continue; }
       if (o.hid) o.hid = false; else if (d2 > 1600 && (this.frame + i) % 3 !== 0) continue;
-      let s = o.s; if (d2 < 3.2 && camP.y < 3) s = 0.0001; o.ph += dt * moving * 5.4 * (d2 > 1600 ? 3 : 1); const sw = Math.sin(o.ph) * 0.5 * Math.min(1, moving);
-      const bob = Math.abs(Math.cos(o.ph)) * 0.03 * Math.min(1, moving);
+      let s = o.s; if (d2 < 3.2 && camP.y < 3) s = 0.0001;
+      // Gang: Phase läuft mit der Strecke, g blendet weich zwischen Stehen und Gehen
+      const far = d2 > 1600, kt = far ? 3 : 1; o.ph += dt * moving * o.gf * kt; o.g += (Math.min(1, moving) - o.g) * Math.min(1, dt * 7 * kt); const g = o.g;
+      const sn = Math.sin(o.ph), cn = Math.cos(o.ph), sw = sn * o.ga * g;
+      const bob = (Math.abs(cn) - 1) * o.gb * g; // Hüfte sinkt im Doppelstand, höchster Punkt über dem Standbein
       const cy = Math.cos(o.yaw), sy = Math.sin(o.yaw); const m = this._m;
-      const w = o.w || 1;
-      this.set('torso', i, o.x, (1.32 + bob) * s, o.z, 0, o.yaw, s, w);
+      const w = o.w || 1, sw_ = s * w, stat = o.state === 'static';
+      // nah: Oberkörper dreht gegen die Beine und neigt sich leicht vor; im Stehen Gewichtsverlagerung, Kopf schaut sich um, Spielbein locker
+      let tw = 0, lean = 0, lat = 0, roll = 0, hyaw = o.yaw, relL = 0, relR = 0, aIdle = 0, kL = 0, kR = 0;
+      if (!far) {
+        tw = sn * 0.09 * g; lean = 0.045 * g;
+        const kb = sn * 0.3624 - cn * 0.932; // = sin(ph - 1.2): Kniebeugung beginnt mit dem Abheben der Ferse, Maximum kurz vor Schwungmitte
+        kL = (0.05 + Math.max(0, kb) * o.gk) * g; kR = (0.05 + Math.max(0, -kb) * o.gk) * g;
+        if (g < 0.95) { const iw = 1 - g, t = G.time, ws = Math.sin(t * 0.55 + i * 1.7);
+          lat = ws * 0.024 * iw; roll = -lat / 0.91; hyaw += Math.sin(t * 0.23 + i * 2.3) * 0.3 * iw; aIdle = Math.sin(t * 0.8 + i) * 0.05 * iw;
+          relL = Math.max(0, ws - 0.3) * 0.2 * iw; relR = Math.max(0, -ws - 0.3) * 0.2 * iw; kL += relL * 2; kR += relR * 2; }
+      }
+      const bx = o.x + cy * lat * s, bz = o.z - sy * lat * s; // Becken seitlich verschoben, Füße bleiben stehen (roll)
+      this.set('torso', i, bx, (1.32 + bob) * s, bz, lean, o.yaw + tw, s, w, lat * 0.8);
       this.set('blob', i, o.x, 0.075, o.z, 0, 0, s * w);
-      this.set('head', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, s);
-      this.set('hair', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, o.hairK === 0 ? s : 0.0001);
-      this.set('hair2', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, o.hairK === 2 ? s : 0.0001);
-      this.set('hair3', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, o.hairK === 1 ? s : 0.0001);
-      this.set('legL', i, o.x - cy * 0.095 * s * w, (0.93 + bob) * s, o.z + sy * 0.095 * s * w, sw, o.yaw, s, w);
-      this.set('legR', i, o.x + cy * 0.095 * s * w, (0.93 + bob) * s, o.z - sy * 0.095 * s * w, -sw, o.yaw, s, w);
-      const armSw = o.state === 'static' ? -0.4 - Math.sin(G.time * 2 + i) * 0.2 : -sw * 0.8;
-      this.set('armL', i, o.x - cy * 0.235 * s * w, (1.52 + bob) * s, o.z + sy * 0.235 * s * w, armSw, o.yaw, s);
-      this.set('armR', i, o.x + cy * 0.235 * s * w, (1.52 + bob) * s, o.z - sy * 0.235 * s * w, o.state === 'static' ? armSw : sw * 0.8, o.yaw, s);
+      const hf = lean * 0.42 * s; this.set('head', i, bx + sy * hf, (1.76 + bob) * s, bz + cy * hf, 0, hyaw, s);
+      // Haare: gleiche Matrix wie der Kopf, die beiden anderen Frisuren auf Null
+      const hk = o.hairK, zm = this._z; this.im.hair.setMatrixAt(i, hk === 0 ? m : zm); this.im.hair2.setMatrixAt(i, hk === 2 ? m : zm); this.im.hair3.setMatrixAt(i, hk === 1 ? m : zm);
+      // Beine: Oberschenkel an der Hüfte, Unterschenkel am Kniepunkt
+      const hy = (0.93 + bob) * s, hx = cy * 0.095 * sw_, hz = sy * 0.095 * sw_;
+      this.leg('legL', 'shinL', i, bx - hx, hy, bz + hz, sw - 0.05 * g - relL, kL, roll, cy, sy, o.yaw, s, w, far);
+      this.leg('legR', 'shinR', i, bx + hx, hy, bz - hz, -sw - 0.05 * g - relR, kR, roll, cy, sy, o.yaw, s, w, far);
+      // Arme gegenläufig zu den Beinen, leicht nach vorn (Ellbogen); Schultern folgen der Oberkörperdrehung
+      const c2 = cy - tw * sy, s2 = sy + tw * cy, ax = c2 * 0.235 * sw_, az = s2 * 0.235 * sw_, af = lean * 0.2 * s, ay = (1.52 + bob) * s;
+      const serve = stat ? -0.4 - Math.sin(G.time * 2 + i) * 0.2 : 0, ab = -0.05 - 0.1 * g;
+      this.set('armL', i, bx - ax + sy * af, ay, bz + az + cy * af, stat ? serve : -sw * 0.8 + ab + aIdle, o.yaw + tw, s);
+      this.set('armR', i, bx + ax + sy * af, ay, bz - az + cy * af, stat ? serve : sw * 0.8 + ab - aIdle, o.yaw + tw, s);
     }
     for (const m of Object.values(this.im)) m.instanceMatrix.needsUpdate = true;
   }
   hide(i) { this._m.makeScale(0, 0, 0); for (const m of Object.values(this.im)) m.setMatrixAt(i, this._m); }
-  set(k, i, x, y, z, rx, ry, s, w = 1) { this._e.set(rx, ry, 0, 'YXZ'); this._q.setFromEuler(this._e); this._m.compose(this._p.set(x, y, z), this._q, this._s.set(s * w, s, s * w)); this.im[k].setMatrixAt(i, this._m); }
+  set(k, i, x, y, z, rx, ry, s, w = 1, rz = 0) { this._e.set(rx, ry, rz, 'YXZ'); this._q.setFromEuler(this._e); this._m.compose(this._p.set(x, y, z), this._q, this._s.set(s * w, s, s * w)); this.im[k].setMatrixAt(i, this._m); }
+  /** Zweiteiliges Bein: a = Hüftwinkel (+ = nach hinten), k = Kniebeugung (>= 0, Fuß nach hinten), rz = seitliche Neigung (klein). Kniepunkt = Hüfte + Ry(yaw)·Rx(a)·Rz(rz)·(0, -0.45 s, 0) */
+  leg(kT, kS, i, x, y, z, a, k, rz, cy, sy, yaw, s, w, far) {
+    let sa, ca; if (far) { const a2 = a * a; sa = a * (1 - a2 / 6); ca = 1 - a2 / 2; } else { sa = Math.sin(a); ca = Math.cos(a); }
+    const l = 0.45 * s, lx = l * rz, lz = -l * sa;
+    this.set(kT, i, x, y, z, a, yaw, s, w, rz);
+    this.set(kS, i, x + lx * cy + lz * sy, y - l * ca, z - lx * sy + lz * cy, a + k, yaw, s, w, rz);
+  }
   /** nächster Knoten zu einer Weltposition */
   nearestNode(x, z) { let b = 0, bd = 1e9; this.nodes.forEach((n, i) => { const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; b = i; } }); return b; }
   /** Kürzester Weg (BFS) zwischen Knoten */
