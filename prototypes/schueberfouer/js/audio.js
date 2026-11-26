@@ -7,7 +7,7 @@
 import { L, RIDES, EXTRA_RIDES, RESTAURANTS, RESTO_ROW } from './data.js';
 
 const BASE = 'assets/audio/';
-const BEDS = ['crowd_murmur', 'crowd_busy', 'crowd_cheer', 'kitchen', 'rain_roof'];
+const BEDS = ['crowd_murmur', 'crowd_busy', 'crowd_cheer', 'kitchen', 'rain_roof', 'motor'];
 const SHOTS = ['glass', 'dishes', 'shot', 'voices', 'giggle', 'barker1', 'barker2'];
 // Musik pro Fahrgeschäft: Datei + Lautstärke der Anlage (1 = sehr laut)
 const RIDE_MUSIC = {
@@ -55,7 +55,7 @@ export class Audio {
     };
     for (const z of Object.values(this.zones)) { z.g.gain.value = 0; z.g.connect(this.musicBus); z.next = c.currentTime + 0.1; z.step = 0; }
     this.buildEmitters();
-    this.nextT = { voice: 4, glass: 2, dish: 6, barker: 20, shot: 8, giggle: 30 }; this.lastVoices = [];
+    this.nextT = { voice: 4, glass: 2, dish: 6, barker: 20, shot: 8, giggle: 30, scream: 5 }; this.lastVoices = [];
     this.load();
     setInterval(() => this.schedule(), 60);
     setInterval(() => this.listen(), 50);
@@ -70,7 +70,7 @@ export class Audio {
     await get('crowd_murmur'); this.startBeds();           // zuerst die Menge, damit es sofort lebt
     for (const k of ['crowd_busy', 'glass', 'voices', 'kitchen']) await get(k);
     this.startBeds();
-    for (const k of ['crowd_cheer', 'dishes', 'shot', 'giggle', 'barker1', 'barker2', 'rain_roof']) await get(k);
+    for (const k of ['crowd_cheer', 'dishes', 'shot', 'giggle', 'barker1', 'barker2', 'rain_roof', 'scream', 'motor']) await get(k);
     this.startBeds();
     this.assetsOk = !!this.buf.crowd_murmur;
   }
@@ -81,7 +81,7 @@ export class Audio {
       const s = c.createBufferSource(); s.buffer = this.buf[k]; s.loop = true; s.playbackRate.value = 0.97 + Math.random() * 0.06;
       const g = c.createGain(); g.gain.value = 0; s.connect(g);
       let node = g;
-      if (k === 'kitchen') { node = this.panner(4, 1.3); g.connect(node); }   // Küche: räumlich an der Restaurantreihe
+      if (k === 'kitchen' || k === 'motor') { node = this.panner(k === 'motor' ? 5 : 4, 1.3); g.connect(node); }   // Küche: räumlich an der Restaurantreihe
       node.connect(k === 'rain_roof' ? this.ambBus : this.ambBus);
       s.start(0, Math.random() * this.buf[k].duration);
       this.beds[k] = { s, g, p: node !== g ? node : null };
@@ -161,12 +161,17 @@ export class Audio {
       B.crowd_busy?.g.gain.setTargetAtTime(inFair * dens * 0.55 * (0.5 + 0.5 * night), t, 0.8);
     } else this.crowdG.gain.setTargetAtTime(0.05 + inFair * 0.22, t, 0.3);
     // Jubel in der Nähe laufender Thrill-Fahrten
-    let thrill = 0; for (const r of Object.values(G.rides || {})) { if (!r.k || !(r.cfg.thrill >= 3 || r.style === 'tower')) continue; const w = L(r.cfg.u, r.cfg.v); const d = Math.hypot(w.x - p.x, w.z - p.z); thrill = Math.max(thrill, r.k * Math.max(0, 1 - d / 45)); }
+    let thrill = 0; for (const r of Object.values(G.rides || {})) { if (!r.k || !(r.cfg.thrill >= 3 || r.style === 'tower')) continue; const w = L(r.cfg.u, r.cfg.v); const d = Math.hypot(w.x - p.x, w.z - p.z); const v = r.k * Math.max(0, 1 - d / 45); if (v > thrill) { thrill = v; this.thrillPos = w; } }
+    this.thrill = thrill;
     B.crowd_cheer?.g.gain.setTargetAtTime(thrill * 0.45, t, 0.7);
     // Restaurant-Küche: an das nächste Lokal setzen
     let rn = null, rd = 1e9; for (const r of this.restos) { const d = Math.hypot(r.x - p.x, r.z - p.z); if (d < rd) { rd = d; rn = r; } }
     if (B.kitchen && rn) { this.setPos(B.kitchen.p, rn.x, 1.5, rn.z); B.kitchen.g.gain.setTargetAtTime(rd < 40 ? 0.5 * eve : 0, t, 0.8); }
     // Regen aufs Budendach
+    // Antriebsbrummen des nächsten laufenden Fahrgeschäfts
+    if (B.motor) { let mr = null, md = 1e9, mk = 0; for (const r of Object.values(G.rides || {})) { if (!(r.k > 0.05)) continue; const w = L(r.cfg.u, r.cfg.v); const d = Math.hypot(w.x - p.x, w.z - p.z); if (d < md) { md = d; mr = w; mk = r.k; } }
+      if (mr && md < 40) { this.setPos(B.motor.p, mr.x, 2, mr.z); B.motor.s.playbackRate.setTargetAtTime(0.8 + mk * 0.5, t, 0.5); B.motor.g.gain.setTargetAtTime(0.5 * mk, t, 0.5); } else B.motor.g.gain.setTargetAtTime(0, t, 0.5); }
+    this.updateMarch(p, t);
     const rain = G.settings.weather === 'reen' ? 1 : 0; B.rain_roof?.g.gain.setTargetAtTime(rain * (0.25 + 0.45 * inFair), t, 1.2);
     this.updateMusic(p, t, eve);
     this.updateZones(p, t);
@@ -192,10 +197,18 @@ export class Audio {
       s.air.frequency.setTargetAtTime(600 + 15000 * Math.exp(-o.d / 38), t, 0.3);
     }
   }
+  /** Hämmelsmarsch: echte Blaskapelle, die räumlich mit dem Umzug mitzieht */
+  updateMarch(p, t) {
+    if (this.paradeOn && this.paradePos) {
+      if (!this.march) { const c = this.ctx; const g = c.createGain(); g.gain.value = 0; const pn = this.panner(10, 1.0); const send = c.createGain(); send.gain.value = 0.18; g.connect(pn).connect(this.musicBus); g.connect(send).connect(this.verb); this.march = { g, pn, src: null };
+        this.track('mus_march').then(b => { if (!this.march) return; const src = c.createBufferSource(); src.buffer = b; src.loop = true; src.connect(g); src.start(); this.march.src = src; }).catch(e => console.warn('Musek fehlt', 'mus_march', e)); }
+      this.setPos(this.march.pn, this.paradePos.x, 2, this.paradePos.z); this.march.g.gain.setTargetAtTime(this.march.src ? 1.0 : 0, t, 0.5);
+    } else if (this.march) { const m = this.march; this.march = null; m.g.gain.setTargetAtTime(0, t, 0.8); setTimeout(() => { try { m.src?.stop(); m.g.disconnect(); } catch (e) {} }, 4000); }
+  }
   updateZones(p, t) {
     const G = this.G;
     for (const [k, z] of Object.entries(this.zones)) {
-      let dmin = 1e9; if (k === 'blos') { if (this.paradeOn && this.paradePos) dmin = Math.hypot(this.paradePos.x - p.x, this.paradePos.z - p.z); }
+      let dmin = 1e9; if (k === 'blos') { if (this.paradeOn && this.paradePos && !this.march?.src) dmin = Math.hypot(this.paradePos.x - p.x, this.paradePos.z - p.z); }
       else if (!this.assetsOk) for (const id of z.pos) { const r = G.rides?.[id]; if (!r) continue; const w = L(r.cfg.u, r.cfg.v); dmin = Math.min(dmin, Math.hypot(w.x - p.x, w.z - p.z)); }
       let v = Math.max(0, 1 - dmin / (k === 'blos' ? 60 : 70)); v = v * v * (k === 'techno' && !this.rideMusic ? 0.2 : 1);
       if (G.player.mode === 'operator' && k === 'techno' && !this.assetsOk) v = this.rideMusic ? 0.8 : 0.1;
@@ -215,6 +228,8 @@ export class Audio {
         this.spot('voices', i, who.x, 1.6, who.z, 0.55 + Math.random() * 0.25, 0.94 + Math.random() * 0.12, 2.5, 0.12); }
     }
     if (N.giggle <= 0 && this.buf.giggle) { N.giggle = 35 + Math.random() * 50; if (dens > 0.3) { const a = Math.random() * 6.28; this.spot('giggle', 0, p.x + Math.cos(a) * 7, 1.5, p.z + Math.sin(a) * 7, 0.35, 0.95 + Math.random() * 0.1, 3, 0.1); } }
+    // Schreie von den wilden Fahrgeschäften, solange sie laufen
+    if (N.scream <= 0) { N.scream = 2.5 + Math.random() * 5; if (this.thrill > 0.12 && this.thrillPos) this.scream(this.thrillPos); }
     // Gläser und Geschirr an Restaurants und Bierbuden
     let bar = null, bd = 1e9; for (const s of G.stalls || []) { if (s.type !== 'beier' && s.type !== 'bar') continue; const d = Math.hypot(s.x - p.x, s.z - p.z); if (d < bd) { bd = d; bar = s; } }
     const nearDrink = Math.min(rd, bd);
@@ -302,7 +317,7 @@ export class Audio {
   click() { this.sfx((t, o) => this.noiseHit(o, t, 0.02, 0.4, 'highpass', 3000)); }
   horn() { this.sfx((t, o) => { this.tone(o, 'sawtooth', 220, t, 0.7, 0.18, 1500); this.tone(o, 'sawtooth', 277, t, 0.7, 0.14, 1500); }); }
   whoosh() { this.sfx((t, o) => { const c = this.ctx; const s = c.createBufferSource(); s.buffer = this.noise; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(3000, t + 0.6); const g = c.createGain(); g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(0.4, t + 0.3); g.gain.exponentialRampToValueAtTime(0.001, t + 0.8); s.connect(f).connect(g).connect(o); s.start(t); s.stop(t + 0.9); }); }
-  scream(pos) { this.sfx((t, o) => { const c = this.ctx; const p = this.G.player.pos; const d = pos ? Math.hypot(pos.x - p.x, pos.z - p.z) : 10; const vol = Math.max(0.03, 0.4 * (1 - d / 120)); for (let k = 0; k < 4; k++) { const s = c.createBufferSource(); s.buffer = this.noise; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 9; const st = t + k * 0.05; f.frequency.setValueAtTime(900 + k * 300, st); f.frequency.linearRampToValueAtTime(1600 + k * 200, st + 0.4); f.frequency.linearRampToValueAtTime(700, st + 1.4); const g = c.createGain(); g.gain.setValueAtTime(0.001, st); g.gain.linearRampToValueAtTime(vol, st + 0.1); g.gain.exponentialRampToValueAtTime(0.001, st + 1.5); s.connect(f).connect(g).connect(o); s.start(st, Math.random()); s.stop(st + 1.6); } }); }
+  scream(pos) { if (this.buf.scream && pos) { const n = 2 + Math.floor(Math.random() * 3); for (let k = 0; k < n; k++) this.spot('scream', null, pos.x + (Math.random() - 0.5) * 6, 4, pos.z + (Math.random() - 0.5) * 6, 0.3 + Math.random() * 0.2, 0.95 + Math.random() * 0.25, 6, 0.15, k * (0.15 + Math.random() * 0.4)); return; } this.sfx((t, o) => { const c = this.ctx; const p = this.G.player.pos; const d = pos ? Math.hypot(pos.x - p.x, pos.z - p.z) : 10; const vol = Math.max(0.03, 0.4 * (1 - d / 120)); for (let k = 0; k < 4; k++) { const s = c.createBufferSource(); s.buffer = this.noise; const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 9; const st = t + k * 0.05; f.frequency.setValueAtTime(900 + k * 300, st); f.frequency.linearRampToValueAtTime(1600 + k * 200, st + 0.4); f.frequency.linearRampToValueAtTime(700, st + 1.4); const g = c.createGain(); g.gain.setValueAtTime(0.001, st); g.gain.linearRampToValueAtTime(vol, st + 0.1); g.gain.exponentialRampToValueAtTime(0.001, st + 1.5); s.connect(f).connect(g).connect(o); s.start(st, Math.random()); s.stop(st + 1.6); } }); }
   boo() { this.sfx((t, o) => { this.tone(o, 'sawtooth', 90, t, 0.9, 0.3, 500); this.noiseHit(o, t, 0.6, 0.35, 'lowpass', 400); }); }
   bell() { this.sfx((t, o) => { [1, 2.76, 5.4].forEach((m, i) => this.tone(o, 'sine', 880 * m, t, 2.2 / (i + 1), 0.25 / (i + 1))); }); }
   shot() { this.sfx((t, o) => this.noiseHit(o, t, 0.12, 0.6, 'lowpass', 2500)); }

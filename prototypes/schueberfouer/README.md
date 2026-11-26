@@ -99,6 +99,7 @@ Maßnahmen: räumlich gebündelte statische Geometrie (Frustum-Culling greift), 
   Lautsprecher-Klang mit Hall zwischen den Fassaden, Limiter gegen Übersteuern. Es spielen immer die 3 nächsten Anlagen.
 - **Optik:** Asphalt neutral grau mit abgefahrenen Parkplatz-Linien, leichter Sommerdunst in der Ferne, nachts warmes
   Streulicht des Lampenmeers auf dem Boden; behoben: Gras schimmerte bei geringer Tiefengenauigkeit durch den Asphalt.
+- **Nachtrag:** echte Blaskapelle für den Hämmelsmarsch (zieht räumlich mit dem Umzug mit), echte Schreie und kräftiger Jubel an laufenden wilden Fahrgeschäften, Antriebsbrummen am nächsten laufenden Fahrgeschäft.
 - Werkzeuge: `tools/audio/mkaudio.py` (Schnitt, nahtlose Loops, Mono-MP3), `tools/audio/fleurs.py` (Sprachproben).
 
 ## Dateien
