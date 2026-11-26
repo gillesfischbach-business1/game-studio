@@ -28,7 +28,51 @@ export function faceTex() {
   g.fillStyle = 'rgba(220,120,110,0.18)'; for (const dx of [-20, 20]) { g.beginPath(); g.arc(cx + dx, 72, 7, 0, 7); g.fill(); }
   FACE = new THREE.CanvasTexture(cv); FACE.colorSpace = THREE.SRGBColorSpace; return FACE;
 }
+/** Vier Gesichter übereinander (Reihe k = Variante): neutral, Bart, Brille, Lippenstift/Wimpern */
+let FACES;
+export function crowdFaceTex() {
+  if (FACES) return FACES;
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 512; const g = cv.getContext('2d');
+  for (let k = 0; k < 4; k++) { const oy = (3 - k) * 128; const cx = 64; g.save(); g.translate(0, oy);
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 256, 128);
+    const sh = g.createRadialGradient(cx, 64, 10, cx, 64, 70); sh.addColorStop(0, 'rgba(255,240,235,0)'); sh.addColorStop(1, 'rgba(120,80,70,0.28)'); g.fillStyle = sh; g.fillRect(0, 0, 256, 128);
+    const brow = k === 1 ? 3.2 : k === 3 ? 1.6 : 2.3;
+    for (const dx of [-13, 13]) { g.fillStyle = '#f7f7f2'; g.beginPath(); g.ellipse(cx + dx, 58, 5.6, 3.2, 0, 0, 7); g.fill();
+      g.fillStyle = ['#3b2a20', '#2b3a4a', '#4a3a22', '#2f4a36'][k]; g.beginPath(); g.arc(cx + dx, 58, 2.6, 0, 7); g.fill(); g.fillStyle = '#000'; g.beginPath(); g.arc(cx + dx, 58, 1.2, 0, 7); g.fill();
+      g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.arc(cx + dx + 0.9, 57.2, 0.6, 0, 7); g.fill();
+      g.strokeStyle = 'rgba(50,34,26,0.9)'; g.lineWidth = brow; g.beginPath(); g.moveTo(cx + dx - 7, 51.5); g.quadraticCurveTo(cx + dx, 47.5 - (k === 3 ? 1 : 0), cx + dx + 7, 51 + (k === 1 ? Math.sign(dx) * -1 : 0)); g.stroke();
+      g.strokeStyle = k === 3 ? 'rgba(20,14,12,0.9)' : 'rgba(70,45,38,0.45)'; g.lineWidth = k === 3 ? 1.5 : 1; g.beginPath(); g.moveTo(cx + dx - 6, 55.6); g.quadraticCurveTo(cx + dx, 53.4, cx + dx + 6, 55.6); g.stroke();
+      g.strokeStyle = 'rgba(90,60,50,0.3)'; g.lineWidth = 1; g.beginPath(); g.moveTo(cx + dx - 6, 61.5); g.quadraticCurveTo(cx + dx, 63.5, cx + dx + 6, 61.5); g.stroke(); }
+    g.fillStyle = 'rgba(150,90,80,0.22)'; g.beginPath(); g.ellipse(cx, 68, 3.5, 6, 0, 0, 7); g.fill();
+    g.fillStyle = 'rgba(90,50,45,0.35)'; for (const dx of [-2.2, 2.2]) { g.beginPath(); g.ellipse(cx + dx, 73, 1.2, 0.8, 0, 0, 7); g.fill(); }
+    if (k === 1) { g.fillStyle = 'rgba(45,32,26,0.55)'; g.beginPath(); g.ellipse(cx, 88, 21, 15, 0, 0, Math.PI); g.fill(); g.beginPath(); g.ellipse(cx, 77.5, 10, 2.6, 0, 0, 7); g.fill(); g.fillStyle = 'rgba(45,32,26,0.4)'; for (const dx of [-21, 21]) g.fillRect(cx + dx - 3, 62, 6, 26); }
+    g.fillStyle = k === 3 ? 'rgba(190,40,60,0.9)' : 'rgba(165,85,82,0.75)'; g.beginPath(); g.ellipse(cx, 81, k === 3 ? 7.5 : 8, k === 3 ? 3 : 2.2, 0, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(90,40,40,0.5)'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(cx - 7, 81); g.quadraticCurveTo(cx, 82.4, cx + 7, 81); g.stroke();
+    g.fillStyle = 'rgba(220,120,110,' + (k === 3 ? 0.3 : 0.16) + ')'; for (const dx of [-20, 20]) { g.beginPath(); g.arc(cx + dx, 72, 7, 0, 7); g.fill(); }
+    if (k === 2) { g.strokeStyle = 'rgba(20,20,24,0.95)'; g.lineWidth = 1.8; for (const dx of [-13, 13]) { g.beginPath(); g.roundRect(cx + dx - 8.5, 52, 17, 12, 3); g.stroke(); } g.beginPath(); g.moveTo(cx - 4.5, 57); g.lineTo(cx + 4.5, 57); g.stroke(); for (const dx of [-21.5, 21.5]) { g.beginPath(); g.moveTo(cx + dx, 56); g.lineTo(cx + dx * 1.7, 55); g.stroke(); } }
+    g.restore(); }
+  FACES = new THREE.CanvasTexture(cv); FACES.colorSpace = THREE.SRGBColorSpace; FACES.anisotropy = 4; return FACES;
+}
+/** Shader-Zusatz für die Menge: Haut an Hals, Händen und Beinen, Jacke, helle Schuhe (pro Instanz über aSkin / aStyle) */
+function dress(mat, kind) {
+  mat.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 aPart; attribute vec3 aSkin; attribute float aStyle; varying vec3 vPart; varying vec3 vSkin; varying float vStyle;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n vPart = aPart; vSkin = aSkin; vStyle = aStyle;');
+    const body = kind === 'torso' ? 'if (vPart.x > 0.5) diffuseColor.rgb = vSkin; else if (vPart.z > 0.5 && bJ > 0.5) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.86), 0.82); else if (bJ > 0.5) diffuseColor.rgb *= 0.62;'
+      : kind === 'leg' ? 'if (vPart.y > 0.5 && bL > 0.5) diffuseColor.rgb = vSkin; else if (vPart.z > 0.5 && bW > 0.5) diffuseColor.rgb = vec3(0.8, 0.8, 0.78);'
+      : 'if (vPart.x > 0.5) diffuseColor.rgb = vSkin;';
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vPart; varying vec3 vSkin; varying float vStyle;')
+      .replace('#include <color_fragment>', `#include <color_fragment>\n float bL = mod(floor(vStyle / 2.0), 2.0), bJ = mod(floor(vStyle / 4.0), 2.0), bW = mod(floor(vStyle / 8.0), 2.0); ${body}`);
+  };
+  mat.customProgramCacheKey = () => 'dress-' + kind; return mat;
+}
+function faceAtlas(mat) {
+  mat.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aFace;').replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_MAP\n vMapUv.y = (vMapUv.y + aFace) * 0.25;\n#endif'); };
+  mat.customProgramCacheKey = () => 'face-atlas'; return mat;
+}
 function lathe(profile, seg = 12, sz = 1) { const g = new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), seg); if (sz !== 1) g.scale(1, 1, sz); return g; }
+/** Masken pro Vertex für die Kleidung der Menge: x = immer Haut, y = unterer Abschnitt (Haut bei kurzer Hose), z = Extra (Schuh / Knopfleiste) */
+function part(geo, fn) { const p = geo.attributes.position; const a = new Float32Array(p.count * 3); for (let i = 0; i < p.count; i++) { const v = fn(p.getX(i), p.getY(i), p.getZ(i)); a[i * 3] = v[0]; a[i * 3 + 1] = v[1]; a[i * 3 + 2] = v[2]; } geo.setAttribute('aPart', new THREE.BufferAttribute(a, 3)); return geo; }
 function vcol(geo, fn) { const p = geo.attributes.position; const c = new Float32Array(p.count * 3); for (let i = 0; i < p.count; i++) { const v = fn(p.getX(i), p.getY(i), p.getZ(i)); c[i * 3] = v[0]; c[i * 3 + 1] = v[1]; c[i * 3 + 2] = v[2]; } geo.setAttribute('color', new THREE.BufferAttribute(c, 3)); return geo; }
 const W1 = [1, 1, 1];
 /** Oberkörper (Hemd) relativ zur Brustmitte, inkl. kurzer Ärmel */
@@ -37,20 +81,21 @@ export function torsoGeo() {
   const parts = [t.toNonIndexed()];
   for (const sx of [-1, 1]) { const s = new THREE.CylinderGeometry(0.068, 0.062, 0.16, 7); s.rotateZ(sx * 0.35); s.translate(sx * 0.205, 0.16, 0); parts.push(s.toNonIndexed()); const c = new THREE.SphereGeometry(0.07, 7, 5); c.translate(sx * 0.19, 0.22, 0); parts.push(c.toNonIndexed()); }
   for (const p of parts) p.deleteAttribute('uv');
-  return BGU.mergeGeometries(parts);
+  return part(BGU.mergeGeometries(parts), (x, y, z) => [y > 0.2 && z > 0.02 && Math.abs(x) < 0.075 ? 1 : 0, 0, z > 0.04 && Math.abs(x) < 0.05 && y < 0.24 ? 1 : 0]);
 }
 /** Bein (Hose) mit Schuh; Drehpunkt an der Hüfte, Länge ~0.9 */
 export function legGeo() {
   const l = lathe([[0.001, 0.06], [0.09, 0.05], [0.1, -0.05], [0.085, -0.3], [0.066, -0.45], [0.07, -0.55], [0.058, -0.75], [0.05, -0.84], [0.001, -0.86]], 7);
   const shoe = new THREE.BoxGeometry(0.1, 0.07, 0.25); shoe.translate(0, -0.875, 0.05);
   const g = BGU.mergeGeometries([l.toNonIndexed(), shoe.toNonIndexed()].map(x => { x.deleteAttribute('uv'); return x; }));
+  part(g, (x, y) => [0, y < -0.42 && y >= -0.84 ? 1 : 0, y < -0.84 ? 1 : 0]);
   return vcol(g, (x, y) => y < -0.84 ? [0.13, 0.13, 0.14] : W1);
 }
 /** Arm (Haut) mit Hand; Drehpunkt an der Schulter */
 export function armGeo() {
   const a = lathe([[0.001, 0.02], [0.05, 0.0], [0.048, -0.22], [0.04, -0.3], [0.038, -0.5], [0.03, -0.56], [0.001, -0.57]], 6);
   const hand = new THREE.SphereGeometry(0.045, 6, 4); hand.scale(0.8, 1.2, 0.55); hand.translate(0, -0.62, 0.01);
-  return BGU.mergeGeometries([a.toNonIndexed(), hand.toNonIndexed()].map(x => { x.deleteAttribute('uv'); return x; }));
+  return part(BGU.mergeGeometries([a.toNonIndexed(), hand.toNonIndexed()].map(x => { x.deleteAttribute('uv'); return x; })), (x, y) => [y < -0.55 ? 1 : 0, 0, 0]);
 }
 /** Kopf mit Hals; Ursprung = Kopfmitte. UV vom Kugel-Teil -> Gesichtstextur */
 export function headGeo() {
@@ -158,10 +203,17 @@ export class Crowd {
     const fn = loadTex('fabric_pattern_07_nor.jpg', false);
     const cloth = new THREE.MeshStandardMaterial({ roughness: 0.85, normalMap: fn, normalScale: new THREE.Vector2(0.8, 0.8), vertexColors: true });
     const clothT = new THREE.MeshStandardMaterial({ roughness: 0.85, normalMap: fn, normalScale: new THREE.Vector2(0.8, 0.8) });
-    const skinMat = new THREE.MeshStandardMaterial({ roughness: 0.5 }); const faceMat = new THREE.MeshStandardMaterial({ roughness: 0.5, map: faceTex() }); const hairMat = new THREE.MeshStandardMaterial({ roughness: 0.65 });
+    const skinMat = new THREE.MeshStandardMaterial({ roughness: 0.5 }); const faceMat = faceAtlas(new THREE.MeshStandardMaterial({ roughness: 0.5, map: crowdFaceTex() })); const hairMat = new THREE.MeshStandardMaterial({ roughness: 0.65 });
     const hairs = [hairGeo(0), hairGeo(1), hairGeo(2)];
-    this.im = {}; for (const [k, geo, mat] of [['torso', torsoGeo(), clothT], ['head', headGeo(), faceMat], ['hair', hairs[0], hairMat], ['hair2', hairs[2], hairMat], ['legL', legGeo(), cloth], ['legR', legGeo(), cloth], ['armL', armGeo(), skinMat], ['armR', armGeo(), skinMat]]) { const m = new THREE.InstancedMesh(geo, mat, count); m.frustumCulled = false; m.castShadow = false; m.receiveShadow = true; G.scene.add(m); this.im[k] = m; }
+    const legMat = dress(cloth, 'leg'), torsoMat = dress(clothT, 'torso'), armMat = dress(new THREE.MeshStandardMaterial({ roughness: 0.7 }), 'arm');
+    const blobTex = (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'); const gr = g.createRadialGradient(32, 32, 2, 32, 32, 32); gr.addColorStop(0, 'rgba(0,0,0,0.8)'); gr.addColorStop(0.5, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(cv); })();
+    const blobGeo = new THREE.PlaneGeometry(0.95, 0.95); blobGeo.rotateX(-Math.PI / 2);
+    const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
+    this.im = {}; for (const [k, geo, mat] of [['torso', torsoGeo(), torsoMat], ['head', headGeo(), faceMat], ['hair', hairs[0], hairMat], ['hair2', hairs[2], hairMat], ['hair3', hairs[1], hairMat], ['legL', legGeo(), legMat], ['legR', legGeo(), legMat], ['armL', armGeo(), armMat], ['armR', armGeo(), armMat], ['blob', blobGeo, blobMat]]) { const m = new THREE.InstancedMesh(geo, mat, count); m.frustumCulled = false; m.castShadow = false; m.receiveShadow = true; G.scene.add(m); this.im[k] = m; }
     const c = new THREE.Color();
+    const aSkin = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3), aStyle = new THREE.InstancedBufferAttribute(new Float32Array(count), 1), aFace = new THREE.InstancedBufferAttribute(new Float32Array(count), 1);
+    for (const k of ['torso', 'legL', 'legR', 'armL', 'armR']) { this.im[k].geometry.setAttribute('aSkin', aSkin); this.im[k].geometry.setAttribute('aStyle', aStyle); }
+    this.im.head.geometry.setAttribute('aFace', aFace);
     this.a = [];
     const nOut = Math.round(count * 0.1); const vendors = G.vendors || [];
     for (let i = 0; i < count; i++) {
@@ -172,11 +224,17 @@ export class Crowd {
       if (isVendor) { const vd = vendors[i]; const w = L(vd.u, vd.v); o.x = w.x; o.z = w.z; o.yaw = vd.ry + G.FAIR.theta; o.state = 'static'; o.s = R(0.95, 1.05); this.im.torso.setColorAt(i, c.set(vd.color === '#ffffff' ? '#f1faee' : '#ffffff')); }
       else if (isOut) { o.state = 'out'; o.road = pick(this.walkRoads); o.sp = R(0, o.road.tot); o.dir = rand() < 0.5 ? 1 : -1; o.side = rand() < 0.5 ? 1 : -1; this.im.torso.setColorAt(i, c.set(shirt)); }
       else { const ni = RI(0, nodes.length - 1); const nd = nodes[ni]; o.from = ni; o.to = pick(nd.n.length ? nd.n : [ni]); o.x = nd.x + R(-2, 2); o.z = nd.z + R(-2, 2); o.t = rand(); this.im.torso.setColorAt(i, c.set(shirt)); }
-      this.im.head.setColorAt(i, c.set(skin)); this.im.hair.setColorAt(i, c.set(hairC)); this.im.hair2.setColorAt(i, c.set(hairC)); this.im.legL.setColorAt(i, c.set(pants)); this.im.legR.setColorAt(i, c.set(pants));
-      this.im.armL.setColorAt(i, c.set(skin)); this.im.armR.setColorAt(i, c.set(skin)); o.long = rand() < 0.4;
+      // Kleidung und Statur: lange Ärmel, kurze Hose, offene Jacke, helle Schuhe
+      const longSl = rand() < 0.38, shorts = rand() < (kid ? 0.55 : 0.28), jacket = longSl && rand() < 0.6, lightShoe = rand() < 0.42;
+      aStyle.setX(i, (longSl ? 1 : 0) + (shorts ? 2 : 0) + (jacket ? 4 : 0) + (lightShoe ? 8 : 0)); c.set(skin); aSkin.setXYZ(i, c.r, c.g, c.b);
+      const fem = rand() < 0.5; aFace.setX(i, kid ? pick([0, 3]) : fem ? pick([0, 2, 3, 3]) : pick([0, 0, 1, 1, 2]));
+      o.w = kid ? R(0.92, 1.02) : fem ? R(0.86, 1.0) : R(0.98, 1.16); o.hairK = !fem && rand() < 0.1 ? -1 : fem ? pick([1, 1, 2, 2, 0]) : pick([0, 0, 0, 2]);
+      o.sleeve = longSl ? (isVendor ? '#f1faee' : shirt) : skin;
+      this.im.head.setColorAt(i, c.set(skin)); this.im.hair.setColorAt(i, c.set(hairC)); this.im.hair2.setColorAt(i, c.set(hairC)); this.im.hair3.setColorAt(i, c.set(hairC)); this.im.legL.setColorAt(i, c.set(pants)); this.im.legR.setColorAt(i, c.set(pants));
+      this.im.armL.setColorAt(i, c.set(o.sleeve)); this.im.armR.setColorAt(i, c.set(o.sleeve));
       this.a.push(o);
     }
-    for (const m of Object.values(this.im)) m.instanceColor.needsUpdate = true;
+    for (const m of Object.values(this.im)) if (m.instanceColor) m.instanceColor.needsUpdate = true;
     this.grid = new Map(); this.frame = 0;
     this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._e = new THREE.Euler(0, 0, 0, 'YXZ'); this._p = new THREE.Vector3(); this._s = new THREE.Vector3();
   }
@@ -220,20 +278,23 @@ export class Crowd {
       let s = o.s; if (d2 < 3.2 && camP.y < 3) s = 0.0001; o.ph += dt * moving * 5.4 * (d2 > 1600 ? 3 : 1); const sw = Math.sin(o.ph) * 0.5 * Math.min(1, moving);
       const bob = Math.abs(Math.cos(o.ph)) * 0.03 * Math.min(1, moving);
       const cy = Math.cos(o.yaw), sy = Math.sin(o.yaw); const m = this._m;
-      this.set('torso', i, o.x, (1.32 + bob) * s, o.z, 0, o.yaw, s);
+      const w = o.w || 1;
+      this.set('torso', i, o.x, (1.32 + bob) * s, o.z, 0, o.yaw, s, w);
+      this.set('blob', i, o.x, 0.075, o.z, 0, 0, s * w);
       this.set('head', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, s);
-      this.set('hair', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, o.long ? 0.0001 : s);
-      this.set('hair2', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, o.long ? s : 0.0001);
-      this.set('legL', i, o.x - cy * 0.095 * s, (0.93 + bob) * s, o.z + sy * 0.095 * s, sw, o.yaw, s);
-      this.set('legR', i, o.x + cy * 0.095 * s, (0.93 + bob) * s, o.z - sy * 0.095 * s, -sw, o.yaw, s);
+      this.set('hair', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, o.hairK === 0 ? s : 0.0001);
+      this.set('hair2', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, o.hairK === 2 ? s : 0.0001);
+      this.set('hair3', i, o.x, (1.76 + bob) * s, o.z, 0, o.yaw, o.hairK === 1 ? s : 0.0001);
+      this.set('legL', i, o.x - cy * 0.095 * s * w, (0.93 + bob) * s, o.z + sy * 0.095 * s * w, sw, o.yaw, s, w);
+      this.set('legR', i, o.x + cy * 0.095 * s * w, (0.93 + bob) * s, o.z - sy * 0.095 * s * w, -sw, o.yaw, s, w);
       const armSw = o.state === 'static' ? -0.4 - Math.sin(G.time * 2 + i) * 0.2 : -sw * 0.8;
-      this.set('armL', i, o.x - cy * 0.235 * s, (1.52 + bob) * s, o.z + sy * 0.235 * s, armSw, o.yaw, s);
-      this.set('armR', i, o.x + cy * 0.235 * s, (1.52 + bob) * s, o.z - sy * 0.235 * s, o.state === 'static' ? armSw : sw * 0.8, o.yaw, s);
+      this.set('armL', i, o.x - cy * 0.235 * s * w, (1.52 + bob) * s, o.z + sy * 0.235 * s * w, armSw, o.yaw, s);
+      this.set('armR', i, o.x + cy * 0.235 * s * w, (1.52 + bob) * s, o.z - sy * 0.235 * s * w, o.state === 'static' ? armSw : sw * 0.8, o.yaw, s);
     }
     for (const m of Object.values(this.im)) m.instanceMatrix.needsUpdate = true;
   }
   hide(i) { this._m.makeScale(0, 0, 0); for (const m of Object.values(this.im)) m.setMatrixAt(i, this._m); }
-  set(k, i, x, y, z, rx, ry, s) { this._e.set(rx, ry, 0, 'YXZ'); this._q.setFromEuler(this._e); this._m.compose(this._p.set(x, y, z), this._q, this._s.set(s, s, s)); this.im[k].setMatrixAt(i, this._m); }
+  set(k, i, x, y, z, rx, ry, s, w = 1) { this._e.set(rx, ry, 0, 'YXZ'); this._q.setFromEuler(this._e); this._m.compose(this._p.set(x, y, z), this._q, this._s.set(s * w, s, s * w)); this.im[k].setMatrixAt(i, this._m); }
   /** nächster Knoten zu einer Weltposition */
   nearestNode(x, z) { let b = 0, bd = 1e9; this.nodes.forEach((n, i) => { const d = (n.x - x) ** 2 + (n.z - z) ** 2; if (d < bd) { bd = d; b = i; } }); return b; }
   /** Kürzester Weg (BFS) zwischen Knoten */
