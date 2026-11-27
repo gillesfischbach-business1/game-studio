@@ -100,10 +100,10 @@ export class Audio {
     const p = this.ctx.createPanner(); p.panningModel = this.panModel; p.distanceModel = 'inverse'; p.refDistance = ref; p.maxDistance = 400; p.rolloffFactor = roll;
     return p;
   }
-  setPos(p, x, y, z) { const t = this.ctx.currentTime; if (p.positionX) { p.positionX.setTargetAtTime(x, t, 0.05); p.positionY.setTargetAtTime(y, t, 0.05); p.positionZ.setTargetAtTime(z, t, 0.05); } else p.setPosition(x, y, z); }
+  setPos(p, x, y, z) { if (!isFinite(x + y + z)) return; const t = this.ctx.currentTime; if (p.positionX) { p.positionX.setTargetAtTime(x, t, 0.05); p.positionY.setTargetAtTime(y, t, 0.05); p.positionZ.setTargetAtTime(z, t, 0.05); } else p.setPosition(x, y, z); }
   listen() {
     const cam = this.G.camera; if (!cam || !this.ctx) return; const l = this.ctx.listener, t = this.ctx.currentTime;
-    cam.getWorldDirection(this._dir ||= new this.G.THREE.Vector3()); const p = cam.position;
+    cam.getWorldDirection(this._dir ||= new this.G.THREE.Vector3()); const p = cam.position; if (!isFinite(p.x + p.y + p.z + this._dir.x + this._dir.y + this._dir.z)) return;   // Kamera kann beim Umsetzen ein Bild lang ungültig sein
     if (l.positionX) { l.positionX.setTargetAtTime(p.x, t, 0.03); l.positionY.setTargetAtTime(p.y, t, 0.03); l.positionZ.setTargetAtTime(p.z, t, 0.03);
       l.forwardX.setTargetAtTime(this._dir.x, t, 0.03); l.forwardY.setTargetAtTime(this._dir.y, t, 0.03); l.forwardZ.setTargetAtTime(this._dir.z, t, 0.03); l.upX.value = 0; l.upY.value = 1; l.upZ.value = 0; }
     else { l.setPosition(p.x, p.y, p.z); l.setOrientation(this._dir.x, this._dir.y, this._dir.z, 0, 1, 0); }

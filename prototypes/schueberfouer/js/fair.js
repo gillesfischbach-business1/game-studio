@@ -72,6 +72,8 @@ export function buildFair(G) {
   for (const r of Object.values(RIDES)) foot.push({ u: r.u, v: r.v, ...FOOTPRINT[r.type] });
   for (const r of EXTRA_RIDES) foot.push({ u: r.u, v: r.v, ...FOOTPRINT[r.style + (r.small ? '_small' : '')] || FOOTPRINT[r.style] });
   for (const r of RESTAURANTS) foot.push({ u: r.u, v: RESTO_ROW.v, hu: RESTO_ROW.w / 2, hv: RESTO_ROW.d / 2 });
+  // Freihaltezone vor jedem Fahrgeschäft (Kasse, Ein-/Ausstieg): ohne sie stand z. B. vor Geisterbahn und Magic World eine Bude auf dem Ausstiegspunkt
+  for (const f of foot.slice(0, Object.keys(RIDES).length + EXTRA_RIDES.length)) { const hu = f.hu ?? f.r, hv = f.hv ?? f.r, sg = f.v > 0 ? -1 : 1; foot.push({ u: f.u, v: f.v + sg * (hv + 2.4), hu: Math.min(hu, 6), hv: 2.4 }); }
   G.footprints = foot;
   const overlaps = (u, v, hu, hv, m = 0.8) => foot.some(f => f.r ? (Math.max(Math.abs(u - f.u) - hu, 0) ** 2 + Math.max(Math.abs(v - f.v) - hv, 0) ** 2 < (f.r + m) ** 2)
     : (Math.abs(u - f.u) < hu + f.hu + m && Math.abs(v - f.v) < hv + f.hv + m));

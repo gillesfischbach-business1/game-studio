@@ -117,9 +117,14 @@ Maßnahmen: räumlich gebündelte statische Geometrie (Frustum-Culling greift), 
   - Gemessen an der Mittelallee (Héich): Fahrgeschäfte +26 bis +48 Zeichenbefehle und +87.000 bis +150.000 Dreiecke; Buden laut
     Messung des Agenten +12 Zeichenbefehle und +210.000 Dreiecke. Gesamt jetzt rund 1.050–1.660 Zeichenbefehle, 3,4–4,4 Mio. Dreiecke.
   - Offen: neue Geländer ohne Kollision, Kulissen einseitig, Preisschilder zeigen Grundpreise.
-- **Bekannte Eigenheit:** In den ersten rund 10 Bildern nach dem Spielstart, solange Texturen nachladen, kann der
-  Asphalt in einzelnen Bildern fehlen (die Wiese darunter ist sichtbar). Gemessen per Pixelprobe im Test-Browser
-  (Bilder 5 und 9 betroffen, ab Bild 11 stabil). Dort dauert das wegen ~0,5 Bildern/s rund 20 s.
+- **Behoben – fehlender Asphalt:** Wiese (zwei 6-km-Dreiecke) und Asphalt lagen 3 cm übereinander; bildweise gewann die
+  Wiese den Tiefentest. Die Wiese hat jetzt eine Aussparung für die Glacis. Pixelprobe: vorher Bilder 5 und 9 olivgrün,
+  nachher 16 Bilder in Folge grau.
+- **Behoben – Buden vor Fahrgeschäften:** Freihaltezone vor jedem Fahrgeschäft; vorher stand vor Geisterbahn und Magic World
+  eine Bude auf dem Ausstiegspunkt (Magic World: Spielfigur eingeschlossen).
+- **Geländer mit Kollision:** bodennahe Geländer und Zäune der Fahrgeschäfte sind Wände (311 Stück). Test: von allen 22
+  Ausstiegspunkten aus sind 30 m frei erreichbar.
+- **QA-Rundgang:** Übersichtsbilder in `production/qa/evidence/schueberfouer/qa-tour/` (Stand vor diesen drei Korrekturen).
 
 ## Dateien
 `index.html` (lokal), `artifact.html` (veröffentlichte Variante), `js/data.js` (alle
