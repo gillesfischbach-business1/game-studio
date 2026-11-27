@@ -111,6 +111,19 @@ export function shinGeo() {
   part(l, (x, y) => y < -0.4 ? isShoe : isLow); vcol(l, (x, y) => y < -0.4 ? SHOE : W1); part(shoe, () => isShoe); vcol(shoe, () => SHOE);
   return BGU.mergeGeometries([l, shoe]);
 }
+/** Menge: Oberarm (Kontur wie armGeo), Drehpunkt Schulter, Ellbogen bei y = -0.3, unten mit Kappe geschlossen */
+export function uarmGeo() {
+  const g = lathe([[0.001, 0.02], [0.05, 0.0], [0.048, -0.22], [0.04, -0.3], [0.001, -0.325]], 6).toNonIndexed(); g.deleteAttribute('uv');
+  return part(g, () => [0, 0, 0]);
+}
+/** Menge: Unterarm mit Hand, Drehpunkt Ellbogen (= armGeo um 0.3 nach oben), oben mit Kappe geschlossen; Handmitte bei y = -0.32. Maske x = Haut (Hand) */
+export function farmGeo() {
+  const SKIN = [1, 0, 0], NONE = [0, 0, 0];
+  const a = lathe([[0.001, 0.025], [0.04, 0.0], [0.038, -0.2], [0.03, -0.26], [0.001, -0.27]], 6).toNonIndexed(); a.deleteAttribute('uv');
+  const hand = new THREE.SphereGeometry(0.045, 6, 4).toNonIndexed(); hand.deleteAttribute('uv'); hand.scale(0.8, 1.2, 0.55); hand.translate(0, -0.32, 0.01);
+  part(a, (x, y) => y < -0.25 ? SKIN : NONE); part(hand, () => SKIN);
+  return BGU.mergeGeometries([a, hand]);
+}
 /** Menge: Rock / Kleid / Mantelschoß – offener Kegelstumpf, Oberkante y = 0 (steckt im Oberkörper), Saum y = -1; Länge über Skalierung in y */
 export function skirtGeo() {
   const g = new THREE.CylinderGeometry(0.168, 0.215, 1, 8, 1, true); const p = g.attributes.position;
@@ -123,15 +136,15 @@ export function caneGeo() {
   const h = new THREE.CylinderGeometry(0.014, 0.014, 0.12, 5); h.rotateX(Math.PI / 2); h.translate(0, 0.012, 0.015);
   return BGU.mergeGeometries([st, h].map(x => { x = x.toNonIndexed(); x.deleteAttribute('uv'); return x; }));
 }
-/** Menge: Kinderwagen (Wanne, Verdeck, Schiebegriff, Gestell, vier Räder), Ursprung am Boden unter der Mitte, Fahrtrichtung +z, Griff bei y 0.98 / z -0.52 */
+/** Menge: Kinderwagen (Wanne, Verdeck, Schiebegriff, Gestell, vier Räder), Ursprung am Boden unter der Mitte, Fahrtrichtung +z, Griff bei y 1.08 / z -0.56 */
 export function strollerGeo() {
   const P = [], add = (g, col) => { g = g.index ? g.toNonIndexed() : g; g.deleteAttribute('uv'); P.push(vcol(g, () => col)); };
   const GREY = [0.36, 0.38, 0.42], DARK = [0.2, 0.21, 0.24], MET = [0.7, 0.7, 0.72], BLK = [0.05, 0.05, 0.05];
   let g = new THREE.BoxGeometry(0.42, 0.26, 0.72); g.translate(0, 0.56, 0); add(g, GREY);
   g = new THREE.CylinderGeometry(0.25, 0.25, 0.43, 6, 1, false, 0.9, 2.5); g.rotateZ(Math.PI / 2); g.translate(0, 0.66, -0.1); add(g, DARK);
-  g = new THREE.BoxGeometry(0.44, 0.028, 0.028); g.translate(0, 0.98, -0.52); add(g, DARK);
+  g = new THREE.BoxGeometry(0.5, 0.028, 0.028); g.translate(0, 1.08, -0.56); add(g, DARK);
   for (const sx of [-1, 1]) {
-    g = new THREE.BoxGeometry(0.02, 0.4, 0.02); g.rotateX(-0.63); g.translate(sx * 0.2, 0.83, -0.41); add(g, MET);
+    g = new THREE.BoxGeometry(0.02, 0.5, 0.02); g.rotateX(-0.577); g.translate(sx * 0.2, 0.88, -0.43); add(g, MET);
     g = new THREE.BoxGeometry(0.02, 0.3, 0.46); g.translate(sx * 0.2, 0.29, 0); add(g, MET);
     for (const sz of [-1, 1]) { g = new THREE.CylinderGeometry(0.11, 0.11, 0.04, 7); g.rotateZ(Math.PI / 2); g.translate(sx * 0.235, 0.11, sz * 0.27); add(g, BLK); }
   }
@@ -256,11 +269,11 @@ export class Crowd {
     const blobGeo = new THREE.PlaneGeometry(0.95, 0.95); blobGeo.rotateX(-Math.PI / 2);
     const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
     const skirtMat = new THREE.MeshStandardMaterial({ roughness: 0.85, side: THREE.DoubleSide }), caneMat = new THREE.MeshStandardMaterial({ color: '#3a2618', roughness: 0.55 }), strollerMat = new THREE.MeshStandardMaterial({ roughness: 0.7, vertexColors: true });
-    this.im = {}; for (const [k, geo, mat] of [['torso', torsoGeo(), torsoMat], ['head', headGeo(), faceMat], ['hair', hairs[0], hairMat], ['hair2', hairs[2], hairMat], ['hair3', hairs[1], hairMat], ['legL', thighGeo(), legMat], ['legR', thighGeo(), legMat], ['shinL', shinGeo(), legMat], ['shinR', shinGeo(), legMat], ['armL', armGeo(), armMat], ['armR', armGeo(), armMat], ['blob', blobGeo, blobMat], ['skirt', skirtGeo(), skirtMat], ['cane', caneGeo(), caneMat], ['stroller', strollerGeo(), strollerMat]]) { const m = new THREE.InstancedMesh(geo, mat, count); m.frustumCulled = false; m.castShadow = false; m.receiveShadow = true; G.scene.add(m); this.im[k] = m; }
+    this.im = {}; for (const [k, geo, mat] of [['torso', torsoGeo(), torsoMat], ['head', headGeo(), faceMat], ['hair', hairs[0], hairMat], ['hair2', hairs[2], hairMat], ['hair3', hairs[1], hairMat], ['legL', thighGeo(), legMat], ['legR', thighGeo(), legMat], ['shinL', shinGeo(), legMat], ['shinR', shinGeo(), legMat], ['armL', uarmGeo(), armMat], ['armR', uarmGeo(), armMat], ['foreL', farmGeo(), armMat], ['foreR', farmGeo(), armMat], ['blob', blobGeo, blobMat], ['skirt', skirtGeo(), skirtMat], ['cane', caneGeo(), caneMat], ['stroller', strollerGeo(), strollerMat]]) { const m = new THREE.InstancedMesh(geo, mat, count); m.frustumCulled = false; m.castShadow = false; m.receiveShadow = true; G.scene.add(m); this.im[k] = m; }
     for (const k of ['skirt', 'cane', 'stroller']) this.im[k].instanceMatrix.array.fill(0); // Zubehör: standardmäßig unsichtbar (Null-Matrix), update() schreibt nur die Träger
     const c = new THREE.Color();
     const aSkin = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3), aStyle = new THREE.InstancedBufferAttribute(new Float32Array(count), 1), aFace = new THREE.InstancedBufferAttribute(new Float32Array(count), 1);
-    for (const k of ['torso', 'legL', 'legR', 'shinL', 'shinR', 'armL', 'armR']) { this.im[k].geometry.setAttribute('aSkin', aSkin); this.im[k].geometry.setAttribute('aStyle', aStyle); }
+    for (const k of ['torso', 'legL', 'legR', 'shinL', 'shinR', 'armL', 'armR', 'foreL', 'foreR']) { this.im[k].geometry.setAttribute('aSkin', aSkin); this.im[k].geometry.setAttribute('aStyle', aStyle); }
     this.im.head.geometry.setAttribute('aFace', aFace);
     this.a = [];
     const nOut = Math.round(count * 0.1); const vendors = G.vendors || [];
@@ -333,17 +346,24 @@ export class Crowd {
       }
       if (adult && rnd() < (arch === 1 ? (fem ? 0.35 : 0.1) : 0.13)) aFace.setX(i, fem ? 5 : 4); // Sonnenbrille
       if (adult && !chat && arch !== 1 && rnd() < 0.02) { o.st = true; o.speed *= 0.82; } // Kinderwagen
-      // Sitzplatz: by = Bankhöhe, tb = Knie über der Waagrechten (Unterschenkel senkrecht, Schuhe auf dem Podest, y = 0.155), ar = Armwinkel zur Tischplatte, lap = linke Hand im Schoß, gT / go = Takt der Trinkgeste
-      if (adult && !isOut && !chat && !o.st && sitI < sits.length && ++elig % sitStride === 0) { const q = sits[sitI++]; o.state = 'sit'; o.x = q.x; o.z = q.z; o.yaw = q.yaw; o.by = q.y; o.cane = false; o.lk1 = q.lk1; o.lk2 = q.lk2; o.lph = q.lph; o.lap = q.lap; o.gT = q.gT; o.go = q.go; o.lp = 0; o.fp = false;
+      // Sitzplatz: by = Bankhöhe, tb = Knie über der Waagrechten (Unterschenkel senkrecht, Schuhe auf dem Podest, y = 0.155), au / fa = Oberarm / Unterarm mit der Hand auf der Tischplatte, lu / lf / ld = linker Arm (Tisch oder Schoß), dA / du / dF / dT = Trinkhaltung (Hand am Mund), gT / go = Takt der Trinkgeste
+      if (adult && !isOut && !chat && !o.st && sitI < sits.length && ++elig % sitStride === 0) { const q = sits[sitI++]; o.state = 'sit'; o.x = q.x; o.z = q.z; o.yaw = q.yaw; o.by = q.y; o.cane = false; o.lk1 = q.lk1; o.lk2 = q.lk2; o.lph = q.lph; o.gT = q.gT; o.go = q.go; o.lp = 0; o.fp = false;
         const hip = q.y + 0.085 * o.s; o.tb = Math.asin(clamp((0.16 + 0.46 * o.s - hip) / (0.45 * o.s), 0, 0.4)); // Große: Knie etwas höher, damit die Schuhe auf dem Podest stehen
-        o.ar = -Math.acos(clamp((hip + 0.57 * o.s - q.table - 0.03) / (0.62 * o.s), 0.2, 1)); }
+        // Arme: Oberarm hängt am Körper (bei Kleinen so weit vor, dass der Ellbogen über der Tischkante bleibt), Unterarm so, dass die Handmitte 2.5 cm über der Platte liegt (halbe Handdicke: Handfläche auf dem Tisch)
+        const S = o.s, shY = hip + 0.57 * S, A = Math.max(0.15, Math.acos(clamp((shY - q.table - 0.03) / (0.3 * S), -1, 1))), eY = shY - 0.3 * S * Math.cos(A);
+        o.au = -A; o.fa = -Math.acos(clamp((eY - q.table - 0.015) / (0.32 * S), -1, 1));
+        if (q.lap) { o.lu = 0.1; o.lf = -Math.acos((0.57 - 0.3 * Math.cos(0.1) - 0.1) / 0.32); o.ld = 0.45; } else { o.lu = o.au; o.lf = o.fa; o.ld = 0.25; }
+        // Trinken (in Einheiten von s, Ursprung Hüfte): Oberarm 0.5 rad nach innen gedreht und so weit gehoben, dass der Unterarm genau bis 3 cm vor den Mund reicht
+        { const sx = 0.235 * o.w, tx = 0, ty = 0.76, tz = 0.194; let bA = 0.7, bE = 9, ex = 0, ey = 0, ez = 0;
+          for (let a = 0.7; a < 2.0; a += 0.01) { const x = sx - 0.3 * Math.sin(a) * 0.4794, y = 0.57 - 0.3 * Math.cos(a), z = 0.0448 + 0.3 * Math.sin(a) * 0.8776, er = Math.abs(Math.hypot(tx - x, ty - y, tz - z) - 0.32); if (er < bE) { bE = er; bA = a; ex = x; ey = y; ez = z; } if (er < 0.002) break; }
+          const dx = tx - ex, dy = ty - ey, dz = tz - ez, dl = Math.hypot(dx, dy, dz) || 1; o.dA = -bA; o.du = -0.5; o.dF = -Math.acos(clamp(-dy / dl, -1, 1)); o.dT = Math.atan2(dx, dz); } }
       aStyle.setX(i, (longSl ? 1 : 0) + (shorts ? 2 : 0) + (jacket ? 4 : 0) + (lightShoe ? 8 : 0) + (sleeveless ? 16 : 0));
       o.sleeve = longSl ? (isVendor ? '#f1faee' : shirt) : skin;
       // Farben: die Jacke dunkelt das Oberteil im Shader auf 62 % ab, deshalb Wunschfarbe / 0.62; Ärmel in sichtbarer Jackenfarbe
       if (torsoC) this.im.torso.setColorAt(i, jacket ? c.set(torsoC).multiplyScalar(1 / 0.62) : c.set(torsoC));
       this.im.head.setColorAt(i, c.set(skin)); this.im.hair.setColorAt(i, c.set(hairC)); this.im.hair2.setColorAt(i, c.set(hairC)); this.im.hair3.setColorAt(i, c.set(hairC));
       c.set(thighC || pants); this.im.legL.setColorAt(i, c); this.im.legR.setColorAt(i, c); c.set(pants); this.im.shinL.setColorAt(i, c); this.im.shinR.setColorAt(i, c);
-      if (armC) c.set(armC); else if (jacket && !isVendor) c.set(o.sleeve).multiplyScalar(0.62); else c.set(o.sleeve); this.im.armL.setColorAt(i, c); this.im.armR.setColorAt(i, c);
+      if (armC) c.set(armC); else if (jacket && !isVendor) c.set(o.sleeve).multiplyScalar(0.62); else c.set(o.sleeve); this.im.armL.setColorAt(i, c); this.im.armR.setColorAt(i, c); this.im.foreL.setColorAt(i, c); this.im.foreR.setColorAt(i, c);
       this.im.skirt.setColorAt(i, c.set(skirtC || '#000000'));
       // Gang: gf = Schrittfrequenz (rad pro Meter), ga = Hüftausschlag, gb = Wippen, gk = Kniebeugung, g = geglättetes Gehgewicht 0..1 (Kinder: schneller, federnder)
       o.gf = kid ? 7.6 : 5.4 / o.s; o.ga = kid ? 0.5 : 0.36 + 0.07 * o.speed; o.gb = kid ? 0.048 : 0.035; o.gk = kid ? 1.0 : 0.9; o.g = 0;
@@ -401,7 +421,7 @@ export class Crowd {
       const cy = Math.cos(o.yaw), sy = Math.sin(o.yaw); const m = this._m;
       const w = o.w || 1, sw_ = s * w, stat = o.state === 'static';
       // nah: Oberkörper dreht gegen die Beine und neigt sich leicht vor; im Stehen Gewichtsverlagerung, Kopf schaut sich um, Spielbein locker
-      let tw = 0, lean = o.ln, lat = 0, roll = 0, hyaw = o.yaw, relL = 0, relR = 0, aIdle = 0, kL = 0, kR = 0;
+      let tw = 0, lean = o.ln, lat = 0, roll = 0, hyaw = o.yaw, relL = 0, relR = 0, aIdle = 0, kL = 0, kR = 0, gw = 0;
       if (!far) {
         tw = o.st ? 0 : sn * 0.09 * g; lean += 0.045 * g;
         const kb = sn * 0.3624 - cn * 0.932; // = sin(ph - 1.2): Kniebeugung beginnt mit dem Abheben der Ferse, Maximum kurz vor Schwungmitte
@@ -410,7 +430,7 @@ export class Crowd {
           lat = ws * 0.024 * iw; roll = -lat / 0.91; aIdle = Math.sin(t * 0.8 + i) * 0.05 * iw;
           relL = Math.max(0, ws - 0.3) * 0.2 * iw; relR = Math.max(0, -ws - 0.3) * 0.2 * iw; kL += relL * 2; kR += relR * 2;
           // Plaudergruppe: Kopf dreht sich abwechselnd zu den beiden Nachbarn, sonst langsames Umschauen
-          if (o.state === 'chat') { const u = Math.sin(t * 0.33 + o.lph) * 3; hyaw += (o.lk1 * Math.max(0, Math.min(1, u - 1.5)) + o.lk2 * Math.max(0, Math.min(1, -u - 1.5))) * iw; } else hyaw += Math.sin(t * 0.23 + i * 2.3) * 0.3 * iw; }
+          if (o.state === 'chat') { const u = Math.sin(t * 0.33 + o.lph) * 3; gw = Math.max(0, Math.min(1, u - 1.5)) * iw; hyaw += (o.lk1 * Math.max(0, Math.min(1, u - 1.5)) + o.lk2 * Math.max(0, Math.min(1, -u - 1.5))) * iw; } else hyaw += Math.sin(t * 0.23 + i * 2.3) * 0.3 * iw; }
       }
       const bx = o.x + cy * lat * s, bz = o.z - sy * lat * s; // Becken seitlich verschoben, Füße bleiben stehen (roll)
       const tf = lean * 0.36 * s; // Neigung um die Hüfte: Unterkante des Oberkörpers bleibt über dem Becken
@@ -424,19 +444,23 @@ export class Crowd {
       this.leg('legL', 'shinL', i, bx - hx, hy, bz + hz, sw - 0.05 * g - relL, kL, roll, cy, sy, o.yaw, s, w, far);
       this.leg('legR', 'shinR', i, bx + hx, hy, bz - hz, -sw - 0.05 * g - relR, kR, roll, cy, sy, o.yaw, s, w, far);
       // Arme gegenläufig zu den Beinen, leicht nach vorn (Ellbogen); Schultern folgen der Oberkörperdrehung
-      const c2 = cy - tw * sy, s2 = sy + tw * cy, ax = c2 * 0.235 * sw_, az = s2 * 0.235 * sw_, af = lean * 0.56 * s, ay = (1.52 + bob) * s;
-      const ab = -0.05 - 0.1 * g; let rL = -sw * 0.8 + ab + aIdle, rR = sw * 0.8 + ab - aIdle;
-      if (stat) rL = rR = -0.4 - Math.sin(G.time * 2 + i) * 0.2; else if (o.st) rL = rR = -0.52; else if (o.cane) rR = sw * 0.5 - 0.15 - 0.07 * g;
-      const sRx = bx + ax + sy * af, sRz = bz - az + cy * af;
-      this.set('armL', i, bx - ax + sy * af, ay, bz + az + cy * af, rL, o.yaw + tw, s);
-      this.set('armR', i, sRx, ay, sRz, rR, o.yaw + tw, s);
+      const tq = 1 - tw * tw / 2, c2 = cy * tq - tw * sy, s2 = sy * tq + tw * cy, ax = c2 * 0.235 * sw_, az = s2 * 0.235 * sw_, af = lean * 0.56 * s, ay = (1.52 + bob) * s;
+      // Arme zweiteilig: rL / rR = Oberarm (- = nach vorn), eL / eR = Ellbogenbeugung (leicht gebeugt, beim Vorschwingen stärker), dF = Unterarme nach innen gedreht
+      let rL = -sw * 0.75 - 0.02 + aIdle, rR = sw * 0.75 - 0.02 - aIdle, eL = 0.16 + g * (0.12 + 0.2 * Math.max(0, sn)), eR = 0.16 + g * (0.12 + 0.2 * Math.max(0, -sn)), dF = 0;
+      if (stat) { rL = rR = (-0.4 - Math.sin(G.time * 2 + i) * 0.2) * 0.7; eL = eR = 0.8; } // Verkäufer: Bedienbewegung mit gebeugtem Ellbogen
+      else if (o.st) { rL = rR = -0.3; eL = eR = 0.771; dF = (0.235 * w - 0.21) * 3.5; } // Kinderwagen: Oberarme leicht vor, Unterarme flach zum Griff
+      else if (o.cane) { rR = sw * 0.4 - 0.05; eR = 0.3 + 0.07 * g; }
+      else if (gw > 0) { rR -= gw * 0.25; eR += gw * (1.15 + 0.3 * Math.sin(G.time * 5 + i)); } // Plaudergruppe: ein Unterarm gestikuliert, solange der Kopf zum Nachbarn schaut
+      const sRx = bx + ax + sy * af, sRz = bz - az + cy * af, yA = o.yaw + tw, fR = rR - eR;
+      this.arm('armL', 'foreL', i, bx - ax + sy * af, ay, bz + az + cy * af, rL, rL - eL, yA, c2, s2, yA + dF, s);
+      this.arm('armR', 'foreR', i, sRx, ay, sRz, rR, fR, yA, c2, s2, yA - dF, s);
       // Rockteil am Becken: Saum weitet sich mit dem Schritt, leichtes Schwingen (nur nah)
       if (o.sk) this.put('skirt', i, bx, (1.02 + bob) * s, bz, far ? 0 : cn * 0.04 * g, o.yaw - tw * 0.5, sw_, s * o.sk, sw_ * (1 + 0.75 * Math.abs(sw)), lat * 0.4);
       // Gehstock: Griff in der rechten Hand, Länge so gestreckt, dass die Spitze am Boden steht (beim Vorschwingen leicht angehoben)
-      if (o.cane) { const ca = -0.06 + sn * 0.13 * g, r2 = rR * rR, hY = ay - 0.62 * (1 - r2 / 2) * s, hF = (0.035 - 0.62 * rR * (1 - r2 / 6)) * s, lift = Math.max(0, -cn) * 0.06 * g * s;
-        this.put('cane', i, sRx + sy * hF, hY, sRz + cy * hF, ca, o.yaw, s, (hY - lift) / (0.9 * (1 - ca * ca / 2)), s); }
+      if (o.cane) { const ca = -0.06 + sn * 0.15 * g, hY = ay - (0.62 - 0.15 * rR * rR - 0.16 * fR * fR) * s, hF = (0.035 - 0.3 * rR * (1 - rR * rR / 6) - 0.32 * fR * (1 - fR * fR / 6)) * s, lift = Math.max(0, -cn) * 0.06 * g * s;
+        this.put('cane', i, sRx + s2 * hF, hY, sRz + c2 * hF, ca, o.yaw, s, (hY - lift) / (0.9 * (1 - ca * ca / 2)), s); }
       // Kinderwagen vor der Person, Griff in den Händen
-      if (o.st) { const D = 0.845 * o.s; this.put('stroller', i, o.x + sy * D, 0, o.z + cy * D, 0, o.yaw, o.s, o.s, o.s); }
+      if (o.st) { const D = 0.95 * o.s; this.put('stroller', i, o.x + sy * D, 0, o.z + cy * D, 0, o.yaw, o.s, o.s, o.s); }
     }
     for (const m of Object.values(this.im)) m.instanceMatrix.needsUpdate = true;
   }
@@ -455,17 +479,25 @@ export class Crowd {
     if (far) { if (o.fp) return; o.fp = true; } else o.fp = false;
     let lean = 0.08, rz = 0, hyaw = yaw, e = 0;
     if (!far) { const sw1 = Math.sin(t * 0.4 + i * 1.7), u = Math.sin(t * 0.27 + o.lph) * 3; lean += sw1 * 0.025; rz = sw1 * 0.015;
-      hyaw += o.lk1 * Math.max(0, Math.min(1, u - 1.5)) + o.lk2 * Math.max(0, Math.min(1, -u - 1.5));
-      const q = (t + o.go) % o.gT; if (q < 1.8) { const k = q / 1.8; e = Math.min(1, 5 * k * (1 - k)); } } // Trinkgeste: 1.8 s alle gT Sekunden
+      const q = (t + o.go) % o.gT; if (q < 1.8) { const k = q / 1.8; e = Math.min(1, 5 * k * (1 - k)); }
+      hyaw += (o.lk1 * Math.max(0, Math.min(1, u - 1.5)) + o.lk2 * Math.max(0, Math.min(1, -u - 1.5))) * (1 - e); } // beim Trinken schaut der Kopf nach vorn // Trinkgeste: 1.8 s alle gT Sekunden
     const tf = lean * 0.36 * s, hf = lean * 0.8 * s, af = lean * 0.56 * s;
     this.set('torso', i, x + sy * tf, hy + 0.37 * s, z + cy * tf, lean, yaw, s, w, rz);
     this.set('head', i, x + sy * hf, hy + 0.81 * s, z + cy * hf, 0, hyaw, s);
     const hk = o.hairK, m = this._m; this.im.hair.setMatrixAt(i, hk === 0 ? m : zm); this.im.hair2.setMatrixAt(i, hk === 2 ? m : zm); this.im.hair3.setMatrixAt(i, hk === 1 ? m : zm);
     const ax = cy * 0.235 * sw_, az = sy * 0.235 * sw_, ay = hy + 0.57 * s, fx = sy * af, fz = cy * af;
-    this.set('armL', i, x - ax + fx, ay, z + az + fz, o.lap ? -0.55 : o.ar, yaw, s);
-    // rechte Hand zum Mund: der starre Arm wird dabei verkürzt (ersetzt den gebeugten Ellbogen) und nach innen gedreht
-    if (e > 0) this.put('armR', i, x + ax + fx, ay, z - az + fz, o.ar + (-2.16 - o.ar) * e, yaw - 0.38 * e, s, s * (1 - 0.38 * e), s);
-    else this.set('armR', i, x + ax + fx, ay, z - az + fz, o.ar, yaw, s);
+    // Arme: Oberarm hängt am Körper, Unterarm liegt auf dem Tisch (links wahlweise auf dem Oberschenkel), Hände leicht nach innen
+    this.arm('armL', 'foreL', i, x - ax + fx, ay, z + az + fz, o.lu, o.lf, yaw, cy, sy, yaw + o.ld, s);
+    // Trinken: Oberarm hebt sich nach innen, der Unterarm klappt hoch bis die Hand am Mund ist
+    if (e > 0) { const yu = yaw + o.du * e; this.arm('armR', 'foreR', i, x + ax + fx, ay, z - az + fz, o.au + (o.dA - o.au) * e, o.fa + (o.dF - o.fa) * e, yu, Math.cos(yu), Math.sin(yu), yaw - 0.25 + (o.dT + 0.25) * e, s); }
+    else this.arm('armR', 'foreR', i, x + ax + fx, ay, z - az + fz, o.au, o.fa, yaw, cy, sy, yaw - 0.25, s);
+  }
+  /** Zweiteiliger Arm: a = Oberarmwinkel (- = nach vorn), fr = absoluter Winkel des Unterarms, yawU / yawF = Drehung um die Hochachse (cyU / syU = cos / sin von yawU).
+   * Ellbogenpunkt = Schulter + Ry(yawU)·Rx(a)·(0, -0.3 s, 0), der Unterarm setzt dort an und kann eigen gedreht sein */
+  arm(kU, kF, i, x, y, z, a, fr, yawU, cyU, syU, yawF, s) {
+    const l = 0.3 * s, lz = -l * Math.sin(a);
+    this.set(kU, i, x, y, z, a, yawU, s);
+    this.set(kF, i, x + lz * syU, y - l * Math.cos(a), z + lz * cyU, fr, yawF, s);
   }
   /** wie set(), aber mit freier Skalierung je Achse (Rock, Stock, Kinderwagen) */
   put(k, i, x, y, z, rx, ry, sx, sy, sz, rz = 0) { this._e.set(rx, ry, rz, 'YXZ'); this._q.setFromEuler(this._e); this._m.compose(this._p.set(x, y, z), this._q, this._s.set(sx, sy, sz)); this.im[k].setMatrixAt(i, this._m); }
