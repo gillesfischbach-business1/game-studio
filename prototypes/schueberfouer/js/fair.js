@@ -198,6 +198,8 @@ function buildRestaurant(G, root, glow, R0, B, bulbs, idx = 0) {
   for (let x = -w / 2 + 2.2; x < w / 2 - 3.5; x += 3.2) for (let z = -d / 2 + 2.6; z < d / 2 - 1; z += 3) {
     b2.add(new THREE.BoxGeometry(0.8, 0.06, 2.0), pbr('wood', { tile: 0.8, color: '#d6a874', roughness: 0.75 }), x, 0.78, z); b2.add(new THREE.BoxGeometry(0.06, 0.75, 1.5), M('#555'), x, 0.4, z);
     for (const o of [-0.65, 0.65]) b2.add(new THREE.BoxGeometry(0.3, 0.05, 2.0), pbr('wood', { tile: 0.8, color: '#d6a874', roughness: 0.75 }), x + o, 0.47, z);
+    // Sitzplätze für die Menge (js/npc.js, Zustand 'sit'): je Bank zwei Plätze, Blick zum Tisch. y = Oberkante Bank.
+    for (const o of [-0.65, 0.65]) for (const dz of [-0.5, 0.5]) (G.seats ||= []).push({ u: u + x + o, v: v + z + dz, y: 0.495, ry: o > 0 ? -Math.PI / 2 : Math.PI / 2, table: 0.81 });
   }
   b2.add(new THREE.BoxGeometry(1.2, 1.1, d - 3.5), pbr('wood', { tile: 1, color: '#8a5a35', roughness: 0.6 }), w / 2 - 2.2, 0.55, -0.8);
   b2.add(new THREE.BoxGeometry(0.3, 2.4, d - 3.5), Glow('#ffb347', 0.6), w / 2 - 0.4, 1.6, -0.8);
