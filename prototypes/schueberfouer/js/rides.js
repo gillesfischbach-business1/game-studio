@@ -42,7 +42,7 @@ const arcPts = (r, y, a0, a1, step = 1.5) => { const n = Math.max(1, Math.ceil(M
 /** Drehung ry, damit lokales +z zur Mitte zeigt (für Teile auf einem Kreis beim Winkel a) */
 const faceIn = (a) => Math.atan2(-Math.cos(a), -Math.sin(a));
 class Det {
-  constructor() { this.L = { p: [], t: [], w: [] }; this.pm = null; }
+  constructor() { this.L = { p: [], t: [], w: [] }; this.pm = null; this.walls = []; }
   /** Eltern-Rahmen (Position + Drehung um y) für die folgenden Teile; at(null) = aus */
   at(x, y, z, ry = 0) { this.pm = x === null ? null : new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0)), new THREE.Vector3(1, 1, 1)); return this; }
   /** o: k = 'p' Lack | 't' Riffelblech | 'w' Holz, em = Leuchtstärke */
@@ -60,6 +60,8 @@ class Det {
   /** Geländer entlang einer Polylinie (y = Fußpunkt). o: h Höhe, mid Zwischenholme, bars Stababstand (Absperrgitter), post Pfostenabstand */
   rail(pts, col = STEEL, o = {}) { const h = o.h || 1.05, s = o.s || 0.05, mid = o.mid ?? (o.bars ? 0 : 1);
     for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2]; const len = Math.hypot(dx, dz); if (len < 0.05) continue;
+      // Bodennahe Geländer/Zäune merken: flush() macht daraus Kollisionswände (Podest-Geländer über 0,6 m und Treppenläufe nicht)
+      if (o.col !== false && Math.abs(dy) < 0.05 && a[1] <= 0.6 && len > 0.4) { _a.set(a[0], 0, a[2]); _b.set(b[0], 0, b[2]); if (this.pm) { _a.applyMatrix4(this.pm); _b.applyMatrix4(this.pm); } this.walls.push([_a.x, _a.z, _b.x, _b.z]); }
       const m = Math.max(1, Math.round(len / (o.post || 1.8)));
       for (let j = i ? 1 : 0; j <= m; j++) { const t = j / m; this.box(s * 1.3, h, s * 1.3, col, a[0] + dx * t, a[1] + dy * t + h / 2, a[2] + dz * t); }
       this.bar([a[0], a[1] + h, a[2]], [b[0], b[1] + h, b[2]], s * 1.4, col);
@@ -76,7 +78,10 @@ class Det {
     if (o.rail !== false) for (const sx of [-1, 1]) this.rail([[sx * (w / 2 - 0.03), H - rise, 0.05], [sx * (w / 2 - 0.03), 0, run * n + 0.05]], o.railCol || STEEL, { mid: 1 });
     return this; }
   /** Alles in den Batcher der Attraktion geben */
-  flush(B) { for (const k of ['p', 't', 'w']) { const L = this.L[k]; if (!L.length) continue; let n = 0; for (const it of L) n += it[0].attributes.position.count;
+  flush(B, ride) {
+    if (ride?.G?.fairBox) { for (const [x0, z0, x1, z1] of this.walls) { const dx = x1 - x0, dz = z1 - z0; ride.G.fairBox(ride.cfg.u + (x0 + x1) / 2, ride.cfg.v + (z0 + z1) / 2, Math.hypot(dx, dz) / 2, 0.1, Math.atan2(-dz, dx), 'rail'); } }
+    this.walls.length = 0;
+    for (const k of ['p', 't', 'w']) { const L = this.L[k]; if (!L.length) continue; let n = 0; for (const it of L) n += it[0].attributes.position.count;
       const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3), uv = new Float32Array(n * 2); let o = 0; const gain = k === 't' ? PLATE_GAIN : 1;
       for (const [g, c, em] of L) { const cnt = g.attributes.position.count; pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); _dc.set(c);
         for (let i = o; i < o + cnt; i++) { col[i * 3] = _dc.r * gain; col[i * 3 + 1] = _dc.g * gain; col[i * 3 + 2] = _dc.b * gain; uv[i * 2] = em; } o += cnt; }
@@ -287,7 +292,7 @@ class Ferris extends Ride {
     for (const [x0, x1] of [[-16.9, -1.7], [1.7, 7.7], [10.3, 16.9]]) K.rail([[x0, 0.4, 5.4], [x1, 0.4, 5.4]], STEEL, { bars: 0.3, post: 2.4 });
     trailer(K, -11.5, -3.85, Math.PI, 6, WH, GRN); cable(K, [-8.3, -3.3], [-6.1, -2.2]);
     genset(K, 12, 0, -4.3, 0); cable(K, [10.9, -4.3], [6.1, -2.4]);
-    K.flush(this.B);
+    K.flush(this.B, this);
     // Rotor
     this.rotor = new THREE.Group(); this.rotor.position.y = HUB; this.g.add(this.rotor);
     const RB = new Batcher(), rb = new Bulbs();
@@ -358,7 +363,7 @@ class Carousel extends Ride {
     K.ring(8.45, 0.5, [[1.12, 1.356], [1.786, 7.023]], '#d4a017', { bars: 0.33, h: 1.0 });
     gate(K, -0.85, 0.5, 8.42, 0, 1.5, '#39d353'); gate(K, 0.85, 0.5, 8.42, 0, 1.5, '#ff3b30');
     K.box(3.6, 0.25, 0.4, '#8a5a3c', 0, 0.125, 9.0); K.box(3.62, 0.03, 0.05, YEL, 0, 0.255, 9.18);
-    K.flush(this.B);
+    K.flush(this.B, this);
     this.rot = new THREE.Group(); this.g.add(this.rot);
     const RB = new Batcher(), rb = new Bulbs();
     RB.add(new THREE.CylinderGeometry(8.2, 8.2, 0.3, 40), pbr('wood', { tile: 1, color: '#c08a5c', roughness: 0.6 }), 0, 0.65, 0);
@@ -444,7 +449,7 @@ class BreakDance extends Ride {
     K.box(3.1, 0.12, 2.7, DARK, 0, 0.06, 0); K.box(3.04, 0.14, 2.64, PKB, 0, 1.05, 0); K.box(3.4, 0.12, 3.05, PKB, 0, 2.86, -0.08); K.box(3.46, 0.05, 3.11, DARK, 0, 2.945, -0.08);
     for (const sx of [-1, 1]) { K.box(0.12, 2.8, 0.12, PKB, sx * 1.5, 1.4, -1.3); K.box(0.07, 1.3, 0.07, DARK, sx * 1.22, 1.8, -1.34); K.box(0.3, 0.2, 0.12, '#fff4d6', sx * 0.9, 3.08, 1.3, 0, { em: 2.5 }); K.box(0.6, 0.45, 0.4, RUB, sx * 1.1, 3.2, -1.0); }
     K.box(2.5, 0.07, 0.07, DARK, 0, 2.43, -1.34); K.box(2.5, 0.07, 0.07, DARK, 0, 1.17, -1.34); K.box(0.04, 2.0, 0.85, '#3a3d5c', 1.52, 1.1, -0.3); K.box(0.06, 0.05, 0.12, STEEL, 1.55, 1.1, -0.02); K.box(0.04, 1.6, 0.04, STEEL, -1.3, 3.75, -1.2);
-    K.at(null); K.flush(this.B);
+    K.at(null); K.flush(this.B, this);
     // Drehteile: Neigung (Hügel) -> Hauptkreuz -> 4 Teller -> 4 Wagen
     this.tilt = new THREE.Group(); this.tilt.position.y = 0.6; this.tilt.rotation.x = 0.1; this.g.add(this.tilt);
     this.main = new THREE.Group(); this.tilt.add(this.main);
@@ -509,7 +514,7 @@ class Swing extends Ride {
     for (let y = 4; y < 12.6; y += 0.45) K.box(0.4, 0.03, 0.03, STEEL, 0, y, 1.07 - (y - 3.8) * 0.025);
     for (let i = 0; i < 4; i++) { const a = PI / 4 + i * PI / 2; K.dots([Math.cos(a) * 1.1, 3.9, Math.sin(a) * 1.1], [Math.cos(a) * 0.87, 12.6, Math.sin(a) * 0.87], 0.5, '#ffd166', 2.4, 0.12); }
     { const a = Math.atan2(4.3, 3.9); opCabin(K, 3.9, 0.4, 4.3, faceIn(a), '#1d3557', '#ffd166'); speakers(K, 1.9, 0.4, 5.9, faceIn(Math.atan2(5.9, 1.9)), 2); cable(K, [2.9, 3.2], [1.1, 1.2], 0.44); }
-    K.flush(this.B);
+    K.flush(this.B, this);
     this.top = new THREE.Group(); this.top.position.y = 13.5; this.g.add(this.top);
     const TB = new Batcher(), tb = new Bulbs();
     TB.add(new THREE.ConeGeometry(6.4, 2.6, 32, 1, true), M('#e63946', { side: THREE.DoubleSide }), 0, 1.0, 0);
@@ -566,7 +571,7 @@ class FreeFall extends Ride {
     K.cyl(2.5, 0.08, PLATE, 0, H - 1.2, 0, 10, { cap: true }); K.ring(2.4, H - 1.16, [[0, PI * 2]], STEEL, { h: 1.0, mid: 1 });
     for (const s of [-1, 1]) for (const t of [-1, 1]) K.bar([s * 1.2, H - 2.8, t * 1.2], [s * 1.7, H - 1.24, t * 1.7], 0.1, STEEL);
     K.box(0.3, 0.3, 0.3, '#ff2a2a', 0, H + 7.1, 0, 0, { em: 4 });
-    K.flush(this.B);
+    K.flush(this.B, this);
     for (const [x, z] of [[1.25, 1.25], [-1.25, 1.25], [1.25, -1.25], [-1.25, -1.25]]) this.bulbs.line([x, 2, z], [x, H, z], 0.7, i => i % 4 === 0 ? '#ffffff' : '#ef233c', 1, 3);
     this.bulbs.circle(0, H + 3.1, 0, 2.3, 30, '#ffd166', 3, 'xz', 3);
     this.ring = new THREE.Group(); this.g.add(this.ring);
@@ -611,7 +616,7 @@ class Pendulum extends Ride {
     K.rail([[-8.95, 0, -5.95], [-4.6, 0, -5.95]], STEEL, { bars: 0.3 }); K.rail([[4.6, 0, -5.95], [6.4, 0, -5.95]], STEEL, { bars: 0.3 });
     opCabin(K, 0, 0.5, 5.35, PI, BL, '#f72585', 2.4, 1.5);
     genset(K, 7.9, 0, 5.2, 0); cable(K, [6.8, 5.2], [3.0, 5.6]);
-    K.flush(this.B);
+    K.flush(this.B, this);
     this.arm = new THREE.Group(); this.arm.position.y = PIV; this.g.add(this.arm);
     const AB = new Batcher(); AB.add(new THREE.BoxGeometry(0.9, 14, 0.9), M('#f72585', { metalness: 0.4 }), 0, -7, 0); AB.add(new THREE.CylinderGeometry(1.6, 1.6, 1.4, 16), M('#ffd60a'), 0, 1.2, 0);
     const ab = new Bulbs(); ab.line([0.5, 0, 0.5], [0.5, -13.5, 0.5], 0.5, '#ffd60a', 1, 3); ab.line([-0.5, 0, -0.5], [-0.5, -13.5, -0.5], 0.5, '#4cc9f0', 1, 3); AB.build(this.arm); ab.build(this.arm);
@@ -699,7 +704,7 @@ class Coaster extends Ride {
     K.rail([[-15.9, 0, -25.9], [15.9, 0, -25.9], [15.9, 0, 25.9], [-15.9, 0, 25.9]], STEEL, { mid: 2, post: 2.6 });
     K.rail([[-15.9, 0, 25.9], [-15.9, 0, 19.4]], STEEL, { bars: 0.33, post: 2.2 }); K.rail([[-15.9, 0, 0.9], [-15.9, 0, -25.9]], STEEL, { bars: 0.33, post: 2.2 });
     trailer(K, -14.6, 23, -HP, 5.2, '#e9e9ec', OR);
-    K.flush(this.B);
+    K.flush(this.B, this);
     // Bergkulisse (die Alpina Bahn hat eine Alpen-Deko)
     const mtn = new THREE.ConeGeometry(7, 14, 5); this.B.add(mtn, M('#6c757d', { flatShading: true }), 2, 7, 0, 0, 0.3); this.B.add(new THREE.ConeGeometry(3.2, 5, 5), M('#f8f9fa', { flatShading: true }), 2, 12.6, 0, 0, 0.3);
     this.B.add(new THREE.ConeGeometry(5, 10, 5), M('#5c677d', { flatShading: true }), 9, 5, -14, 0, 1); this.B.add(new THREE.ConeGeometry(2.2, 3.5, 5), M('#f8f9fa', { flatShading: true }), 9, 9, -14, 0, 1);
@@ -772,7 +777,7 @@ class Scooter extends Ride {
     for (const [x0, x1] of [[-W / 2 - 0.92, -7], [-4.4, 5.4], [7.6, W / 2 + 0.92]]) K.rail([[x0, 0.35, D / 2 + 0.92], [x1, 0.35, D / 2 + 0.92]], STEEL, { bars: 0.3 });
     gate(K, -5.7, 0.35, D / 2 + 0.92, 0, 2.4, '#39d353'); gate(K, 6.5, 0.35, D / 2 + 0.92, 0, 2.0, '#ff3b30');
     K.box(2.0, 0.8, 1.2, STEEL, -6, 6.25, -3); K.box(1.8, 0.05, 1.0, DARK, -6, 6.67, -3); K.box(0.3, 0.2, 6, STEEL, -6, 5.95, 0.6);
-    K.flush(this.B);
+    K.flush(this.B, this);
     this.cars = []; const cols = ['#e63946', '#ffbe0b', '#3a86ff', '#8338ec', '#06d6a0', '#ff006e', '#fb5607', '#ffffff', '#00b4d8', '#9ef01a'];
     for (let i = 0; i < 10; i++) { const c = makeBumper(cols[i]); c.position.set(R(-W / 2 + 2, W / 2 - 2), 0.4, R(-D / 2 + 2, D / 2 - 2)); this.g.add(c); const seat = new THREE.Object3D(); seat.position.set(0, 0.25, 0.15); c.add(seat);
       this.cars.push({ m: c, x: c.position.x, z: c.position.z, a: R(0, 6.28), v: R(1.5, 3), vx: 0, vz: 0, seat, ai: true, turn: 0 }); this.seats.push(seat); }
@@ -856,7 +861,7 @@ class Ghost extends Ride {
     K.box(W + 0.6, 0.4, 0.36, ST, 0, H - 0.15, zf); K.box(W + 0.4, 0.2, 0.1, ST, 0, 0.1, -D / 2 - 0.22);
     for (let i = 0; i < 13; i++) K.box(0.8, 0.9, 0.5, i % 2 ? ST2 : ST, -9.6 + i * 1.6, H + 0.6, -D / 2 + 0.3);
     for (const x of [-7, 0, 7]) K.box(0.8, 6.5, 0.3, ST, x, 3.25, D / 2 + 0.3);
-    K.flush(this.B);
+    K.flush(this.B, this);
     // Strecke
     const P = [[-8, 0, -8.5], [-4.5, 0, -8.5], [-4.5, 0, -4], [-7.5, 0, -1], [-7.5, 0, 3], [-3, 0, 4], [0, 0, 0], [3, 0, 4], [7.5, 0, 3], [7.5, 0, -1], [4.5, 0, -4], [4.5, 0, -8.5], [0, 0, -9.5]];
     this.curve = new THREE.CatmullRomCurve3(P.map(p => new THREE.Vector3(...p)), true); this.len = this.curve.getLength();
@@ -912,7 +917,7 @@ class VR extends Ride {
     K.cyl(0.1, 1.2, STEEL, 0, 9.6, 0, 6); K.box(0.3, 0.3, 0.3, PK, 0, 10.3, 0, 0, { em: 3 });
     K.box(0.4, 0.7, 1.0, STEEL, -4.72, 3.2, -1.5); K.box(0.03, 0.5, 0.8, DARK, -4.93, 3.2, -1.5);
     genset(K, 1.5, 0, -4.6, Math.PI); cable(K, [0.2, -4.6], [-1.6, -4.15]);
-    K.flush(this.B);
+    K.flush(this.B, this);
     const s = new THREE.Object3D(); s.position.set(0, 0.5, 0); this.g.add(s); this.seats.push(s);
     this.booth(3, 5.3, 0, '#00f5d4');
     G.fairBox(cfg.u, cfg.v, 4.5, 4, 0, 'vr'); this.G.glow.paint(cfg.u, cfg.v + 5, '#00f5d4', 8, 0.6);
@@ -1021,7 +1026,7 @@ class Generic extends Ride {
       this.booth(hu - 1.6, front * (hv + 0.9), front > 0 ? 0 : Math.PI, col2); this.walk = true;
     }
     this.G.glow.paint(cfg.u, cfg.v, col, 10, 0.5);
-    fillRiders(this.seats, 0.5); K.flush(this.B); this.finish(); this.a = 0;
+    fillRiders(this.seats, 0.5); K.flush(this.B, this); this.finish(); this.a = 0;
   }
   update(dt) {
     this.cycle(dt); const k = this.k;
