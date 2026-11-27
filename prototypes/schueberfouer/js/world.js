@@ -41,7 +41,8 @@ export function buildWorld(G) {
 
   // ---------------- Straßen ----------------
   const roadMat = pbr('road', { tile: 6, plane: 'xz', color: '#8a8a8e', reflect: true });
-  const walkMat = pbr('paving', { tile: 2.4, color: '#c9c4ba' });
+  // Tönung gleicht den Braunstich der Pflaster-Textur aus (Mittelwert 127/108/86 -> neutrales Grau), sonst liest sich der Gehweg als Holzsteg
+  const walkMat = pbr('paving', { tile: 2.4, color: '#b6d4ff' });
   const lineMat = M('#e6e6e6', { roughness: 0.6 });
   G.roadSegs = [];
   const seg = (a, b, w, name) => {
