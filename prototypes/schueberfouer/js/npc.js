@@ -278,6 +278,22 @@ export class Crowd {
         p.lk1 = lk(mem[(k + 1) % n]); p.lk2 = lk(mem[(k + n - 1) % n]); p.lph = rnd() * 6.283; slots.push(p); }
       used.push(nd); gi++;
     }
+    // Sitzende Gäste (G.seats aus fair.js: { u, v, y = Oberkante Bank, ry, table = Höhe Tischplatte }): rund 40 % der Plätze, höchstens 15 % der Menge,
+    // tischweise zu zweit bis viert. Eigener Generator rs; jeder sitStride-te geeignete Erwachsene setzt sich, damit Sitzende über alle Indizes verteilt sind (setActive).
+    const sits = []; let sitI = 0, elig = 0, sitStride = 2;
+    { const seats = G.seats || [], rs = mulberry32(4711), nSit = Math.min(Math.round(seats.length * 0.4), Math.floor(count * 0.15)), tables = []; let cur = null;
+      const rel = (p, q) => { const d = Math.atan2(q.x - p.x, q.z - p.z) - p.yaw; return Math.atan2(Math.sin(d), Math.cos(d)); };
+      for (const st of seats) { const p = L(st.u, st.v), q = { x: p.x, z: p.z, y: st.y, table: st.table, yaw: st.ry + G.FAIR.theta }; if (!cur || cur.length >= 4 || Math.hypot(q.x - cur[0].x, q.z - cur[0].z) > 1.75) tables.push(cur = []); cur.push(q); }
+      for (let k = tables.length - 1; k > 0; k--) { const j = Math.floor(rs() * (k + 1)), t = tables[k]; tables[k] = tables[j]; tables[j] = t; }
+      for (const tb of tables) { const left = nSit - sits.length; if (left < 2 || tb.length < 2) { if (left < 2) break; continue; }
+        const n = Math.min(tb.length, left, [2, 2, 2, 3, 4, 4][Math.floor(rs() * 6)]), first = tb[Math.floor(rs() * tb.length)], rest = tb.filter(q => q !== first), opp = rs() < 0.7;
+        // Zweiter Gast: meist gegenüber (kleinster Winkel zur Blickrichtung), sonst daneben (kleinster Abstand)
+        rest.sort((a, b) => opp ? Math.abs(rel(first, a)) - Math.abs(rel(first, b)) : Math.hypot(a.x - first.x, a.z - first.z) - Math.hypot(b.x - first.x, b.z - first.z));
+        const mate = rest.shift(); for (let k = rest.length - 1; k > 0; k--) { const j = Math.floor(rs() * (k + 1)), t = rest[k]; rest[k] = rest[j]; rest[j] = t; }
+        const sel = [first, mate, ...rest].slice(0, n);
+        for (const p of sel) { const ang = sel.filter(q => q !== p).map(q => rel(p, q)).filter(d => Math.abs(d) > 0.25); // gegenüber = geradeaus, Kopf dreht nur zu Nachbar / Diagonale
+          p.lk1 = ang.length ? clamp(ang[0], -1, 1) : rs() - 0.5; p.lk2 = ang.length > 1 ? clamp(ang[1], -1, 1) : (rs() - 0.5) * 0.8; p.lph = rs() * 6.283; p.lap = rs() < 0.4; p.gT = 6 + rs() * 9; p.go = rs() * 15; sits.push(p); } }
+      if (sits.length) sitStride = clamp(Math.floor(((count - vendors.length - nOut) * 0.85 - slots.length) / sits.length), 2, 8); }
     for (let i = 0; i < count; i++) {
       const isVendor = i < vendors.length; const isOut = !isVendor && i < vendors.length + nOut;
       const kid = !isVendor && rand() < 0.12; const s = kid ? R(0.55, 0.7) : R(0.88, 1.1);
@@ -317,6 +333,10 @@ export class Crowd {
       }
       if (adult && rnd() < (arch === 1 ? (fem ? 0.35 : 0.1) : 0.13)) aFace.setX(i, fem ? 5 : 4); // Sonnenbrille
       if (adult && !chat && arch !== 1 && rnd() < 0.02) { o.st = true; o.speed *= 0.82; } // Kinderwagen
+      // Sitzplatz: by = Bankhöhe, tb = Knie über der Waagrechten (Unterschenkel senkrecht, Schuhe auf dem Podest, y = 0.155), ar = Armwinkel zur Tischplatte, lap = linke Hand im Schoß, gT / go = Takt der Trinkgeste
+      if (adult && !isOut && !chat && !o.st && sitI < sits.length && ++elig % sitStride === 0) { const q = sits[sitI++]; o.state = 'sit'; o.x = q.x; o.z = q.z; o.yaw = q.yaw; o.by = q.y; o.cane = false; o.lk1 = q.lk1; o.lk2 = q.lk2; o.lph = q.lph; o.lap = q.lap; o.gT = q.gT; o.go = q.go; o.lp = 0; o.fp = false;
+        const hip = q.y + 0.085 * o.s; o.tb = Math.asin(clamp((0.16 + 0.46 * o.s - hip) / (0.45 * o.s), 0, 0.4)); // Große: Knie etwas höher, damit die Schuhe auf dem Podest stehen
+        o.ar = -Math.acos(clamp((hip + 0.57 * o.s - q.table - 0.03) / (0.62 * o.s), 0.2, 1)); }
       aStyle.setX(i, (longSl ? 1 : 0) + (shorts ? 2 : 0) + (jacket ? 4 : 0) + (lightShoe ? 8 : 0) + (sleeveless ? 16 : 0));
       o.sleeve = longSl ? (isVendor ? '#f1faee' : shirt) : skin;
       // Farben: die Jacke dunkelt das Oberteil im Shader auf 62 % ab, deshalb Wunschfarbe / 0.62; Ärmel in sichtbarer Jackenfarbe
@@ -341,7 +361,7 @@ export class Crowd {
     const G = this.G, nodes = this.nodes; this.frame++; const N = this.active ?? this.a.length;
     // räumliches Raster für Abstand halten
     const grid = this.grid; grid.clear(); const cs = 2;
-    for (let i = 0; i < N; i++) { const o = this.a[i]; const k = Math.floor(o.x / cs) * 73856 + Math.floor(o.z / cs); let arr = grid.get(k); if (!arr) grid.set(k, arr = []); arr.push(i); }
+    for (let i = 0; i < N; i++) { const o = this.a[i]; if (o.state === 'sit') continue; const k = Math.floor(o.x / cs) * 73856 + Math.floor(o.z / cs); let arr = grid.get(k); if (!arr) grid.set(k, arr = []); arr.push(i); }
     const px = player.pos.x, pz = player.pos.z; const crowdFactor = G.crowdFactor ?? 1; const camP = G.camera.position; const cut = 85 * (G.settings.drawDist || 1); const cut2 = cut * cut;
     for (let i = 0; i < N; i++) {
       const o = this.a[i]; let moving = 0;
@@ -370,9 +390,10 @@ export class Crowd {
       // Instanz-Matrizen
       const cdx = o.x - camP.x, cdz = o.z - camP.z, d2 = cdx * cdx + cdz * cdz;
       // Detailstufen: weit weg -> unsichtbar, mittel -> nur jedes 3. Bild aktualisieren
-      if (d2 > cut2) { if (!o.hid) { o.hid = true; this.hide(i); } continue; }
+      if (d2 > cut2) { if (!o.hid) { o.hid = true; o.lp = 0; o.fp = false; this.hide(i); } continue; }
       if (o.hid) o.hid = false; else if (d2 > 1600 && (this.frame + i) % 3 !== 0) continue;
       let s = o.s; if (d2 < 3.2 && camP.y < 3) s = 0.0001;
+      if (o.state === 'sit') { this.sit(i, o, s, d2 > 1600, G.time); continue; }
       // Gang: Phase läuft mit der Strecke, g blendet weich zwischen Stehen und Gehen
       const far = d2 > 1600, kt = far ? 3 : 1; o.ph += dt * moving * o.gf * kt; o.g += (Math.min(1, moving) - o.g) * Math.min(1, dt * 7 * kt); const g = o.g;
       const sn = Math.sin(o.ph), cn = Math.cos(o.ph), sw = sn * o.ga * g;
@@ -421,6 +442,31 @@ export class Crowd {
   }
   hide(i) { this._m.makeScale(0, 0, 0); for (const m of Object.values(this.im)) m.setMatrixAt(i, this._m); }
   set(k, i, x, y, z, rx, ry, s, w = 1, rz = 0) { this._e.set(rx, ry, rz, 'YXZ'); this._q.setFromEuler(this._e); this._m.compose(this._p.set(x, y, z), this._q, this._s.set(s * w, s, s * w)); this.im[k].setMatrixAt(i, this._m); }
+  /** Sitzender Gast: Becken auf der Bank, Oberschenkel waagrecht zum Tisch, Unterschenkel senkrecht bis aufs Podest, Hände auf dem Tisch (oder links im Schoß).
+   * Beine, Rock und Schatten werden nur einmal geschrieben (lp merkt die Skalierung), fern auch der Oberkörper (fp). Nah: leichtes Wiegen, Kopf zu den Tischnachbarn, Trinkgeste. */
+  sit(i, o, s, far, t) {
+    const zm = this._z, yaw = o.yaw, cy = Math.cos(yaw), sy = Math.sin(yaw), w = o.w || 1, sw_ = s * w, x = o.x, z = o.z, hy = o.by + 0.085 * s;
+    if (o.lp !== s) { o.lp = s; const hx = cy * 0.095 * sw_, hz = sy * 0.095 * sw_;
+      this.leg('legL', 'shinL', i, x - hx, hy, z + hz, -1.5708 - o.tb, 1.5708 + o.tb, 0, cy, sy, yaw, s, w, false);
+      this.leg('legR', 'shinR', i, x + hx, hy, z - hz, -1.5708 - o.tb, 1.5708 + o.tb, 0, cy, sy, yaw, s, w, false);
+      // Rock / Mantel liegt gekürzt über den Oberschenkeln; kein Bodenschatten (Podest unter Dach)
+      if (o.sk) this.put('skirt', i, x - sy * 0.03 * s, hy + 0.02 * s, z - cy * 0.03 * s, -1.5708, yaw, sw_, s * Math.min(o.sk, 0.47) * 0.92, sw_ * 0.85);
+      this.im.blob.setMatrixAt(i, zm); }
+    if (far) { if (o.fp) return; o.fp = true; } else o.fp = false;
+    let lean = 0.08, rz = 0, hyaw = yaw, e = 0;
+    if (!far) { const sw1 = Math.sin(t * 0.4 + i * 1.7), u = Math.sin(t * 0.27 + o.lph) * 3; lean += sw1 * 0.025; rz = sw1 * 0.015;
+      hyaw += o.lk1 * Math.max(0, Math.min(1, u - 1.5)) + o.lk2 * Math.max(0, Math.min(1, -u - 1.5));
+      const q = (t + o.go) % o.gT; if (q < 1.8) { const k = q / 1.8; e = Math.min(1, 5 * k * (1 - k)); } } // Trinkgeste: 1.8 s alle gT Sekunden
+    const tf = lean * 0.36 * s, hf = lean * 0.8 * s, af = lean * 0.56 * s;
+    this.set('torso', i, x + sy * tf, hy + 0.37 * s, z + cy * tf, lean, yaw, s, w, rz);
+    this.set('head', i, x + sy * hf, hy + 0.81 * s, z + cy * hf, 0, hyaw, s);
+    const hk = o.hairK, m = this._m; this.im.hair.setMatrixAt(i, hk === 0 ? m : zm); this.im.hair2.setMatrixAt(i, hk === 2 ? m : zm); this.im.hair3.setMatrixAt(i, hk === 1 ? m : zm);
+    const ax = cy * 0.235 * sw_, az = sy * 0.235 * sw_, ay = hy + 0.57 * s, fx = sy * af, fz = cy * af;
+    this.set('armL', i, x - ax + fx, ay, z + az + fz, o.lap ? -0.55 : o.ar, yaw, s);
+    // rechte Hand zum Mund: der starre Arm wird dabei verkürzt (ersetzt den gebeugten Ellbogen) und nach innen gedreht
+    if (e > 0) this.put('armR', i, x + ax + fx, ay, z - az + fz, o.ar + (-2.16 - o.ar) * e, yaw - 0.38 * e, s, s * (1 - 0.38 * e), s);
+    else this.set('armR', i, x + ax + fx, ay, z - az + fz, o.ar, yaw, s);
+  }
   /** wie set(), aber mit freier Skalierung je Achse (Rock, Stock, Kinderwagen) */
   put(k, i, x, y, z, rx, ry, sx, sy, sz, rz = 0) { this._e.set(rx, ry, rz, 'YXZ'); this._q.setFromEuler(this._e); this._m.compose(this._p.set(x, y, z), this._q, this._s.set(sx, sy, sz)); this.im[k].setMatrixAt(i, this._m); }
   /** Zweiteiliges Bein: a = Hüftwinkel (+ = nach hinten), k = Kniebeugung (>= 0, Fuß nach hinten), rz = seitliche Neigung (klein). Kniepunkt = Hüfte + Ry(yaw)·Rx(a)·Rz(rz)·(0, -0.45 s, 0) */
