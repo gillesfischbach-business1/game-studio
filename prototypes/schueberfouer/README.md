@@ -124,6 +124,9 @@ Maßnahmen: räumlich gebündelte statische Geometrie (Frustum-Culling greift), 
   eine Bude auf dem Ausstiegspunkt (Magic World: Spielfigur eingeschlossen).
 - **Geländer mit Kollision:** bodennahe Geländer und Zäune der Fahrgeschäfte sind Wände (311 Stück). Test: von allen 22
   Ausstiegspunkten aus sind 30 m frei erreichbar.
+- **Figurentypen und Sitzende Gäste:** Kleider, Mäntel, Ältere mit Gehstock, Anzüge, Sonnenbrillen, Plaudergruppen, Kinderwagen;
+  Gäste sitzen tischweise an den Restauranttischen (Zustand `sit`, Sitzplätze aus `G.seats` in `js/fair.js`).
+  Gesehen: Sitzende und Plaudergruppe (Nachweise 57, 58). Nicht gesehen: Kinderwagen von vorn, Sonnenbrillen.
 - **QA-Rundgang:** Übersichtsbilder in `production/qa/evidence/schueberfouer/qa-tour/` (Stand vor diesen drei Korrekturen).
 
 ## Dateien
