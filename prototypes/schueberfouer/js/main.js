@@ -42,15 +42,38 @@ G.saveSettings = () => saveSettings(G.settings);
 
 // Farbkorrektur, Vignette, Filmkorn, chromatische Aberration, Farbenblind-Korrektur
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVig: { value: 0.35 }, uGrain: { value: 0.04 }, uSat: { value: 1.05 }, uCon: { value: 1.04 }, uCA: { value: 0.15 }, uCB: { value: new THREE.Matrix3() }, uRain: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVig: { value: 0.35 }, uGrain: { value: 0.04 }, uSat: { value: 1.05 }, uCon: { value: 1.04 }, uCA: { value: 0.15 }, uCB: { value: new THREE.Matrix3() }, uRain: { value: 0 }, uStyle: { value: 1 }, uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) }, uNight: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uVig, uGrain, uSat, uCon, uCA, uRain; uniform mat3 uCB; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uVig, uGrain, uSat, uCon, uCA, uRain, uStyle, uNight; uniform vec2 uTexel; uniform mat3 uCB; varying vec2 vUv;
+    float lum(vec2 p){ return dot(texture2D(tDiffuse, p).rgb, vec3(0.2126, 0.7152, 0.0722)); }
     float rnd(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + uTime * 3.1) * 43758.5453); }
     void main(){ vec2 d = vUv - 0.5; float r2 = dot(d, d);
       vec2 o = d * r2 * 0.012 * uCA;
       vec3 c = vec3(texture2D(tDiffuse, vUv + o).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - o).b);
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722)); c = mix(vec3(l), c, uSat); c = (c - 0.5) * uCon + 0.5;
       c = mix(c, c * vec3(0.9, 0.95, 1.05), uRain * 0.4);
+      if (uStyle < 0.5) {   // Realistisch: Kino-Farbgebung (warme Lichter, kühle Schatten, weiche S-Kurve)
+        float lf = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        c = mix(c, c * vec3(1.07, 1.0, 0.9), smoothstep(0.35, 0.95, lf) * 0.55 * (1.0 - uNight));
+        c = mix(c, c * vec3(0.93, 0.99, 1.07), (1.0 - smoothstep(0.0, 0.4, lf)) * 0.5);
+        c = mix(c, c * c * (3.0 - 2.0 * c), 0.22);
+      }
+      if (uStyle > 0.5) {   // Neon-Comic: Tuschekonturen, Farbstufen, blaugrüne Schatten, leuchtende Neonfarben
+        vec2 e = uTexel * 1.4;
+        float tl = lum(vUv + vec2(-e.x, e.y)), tc = lum(vUv + vec2(0.0, e.y)), tr = lum(vUv + e), ml = lum(vUv + vec2(-e.x, 0.0)), mr = lum(vUv + vec2(e.x, 0.0)), bl = lum(vUv - e), bc = lum(vUv - vec2(0.0, e.y)), br = lum(vUv + vec2(e.x, -e.y));
+        float gx = (tr + 2.0 * mr + br) - (tl + 2.0 * ml + bl), gy = (tl + 2.0 * tc + tr) - (bl + 2.0 * bc + br);
+        float edge = smoothstep(0.16, 0.42, sqrt(gx * gx + gy * gy) / (0.25 + l));
+        float l2 = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        float mx = max(c.r, max(c.g, c.b)), mn = min(c.r, min(c.g, c.b)); float sat = (mx - mn) / (mx + 0.001);
+        float steps = 5.0; float q = (floor(l2 * steps) + smoothstep(0.35, 0.65, fract(l2 * steps))) / steps;   // weiche Farbstufen
+        c *= (q + 0.02) / (l2 + 0.02);
+        vec3 teal = vec3(0.05, 0.36, 0.42);
+        float neon = smoothstep(0.22, 0.6, sat) * smoothstep(0.18, 0.55, mx);          // bunte, helle Flächen bleiben Neon
+        vec3 base = mix(vec3(l2) * teal * 2.6 + teal * 0.05, c, 0.66);               // der Rest kippt ins Blaugrün
+        c = mix(base, c * 1.3, neon) * 1.12;
+        c = mix(c, c * vec3(0.9, 1.0, 1.05), 0.5 * (1.0 - uNight));
+        c = mix(c, vec3(0.01, 0.035, 0.05), edge * 0.92);                             // Tusche
+      }
       c *= 1.0 - uVig * smoothstep(0.15, 0.75, r2 * 1.6);
       c += (rnd(vUv * 1000.0) - 0.5) * uGrain;
       c = uCB * c;
@@ -68,7 +91,7 @@ async function boot() {
   const S = G.settings;
   const renderer = new THREE.WebGLRenderer({ stencil: false, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: params.has('shot') });
   renderer.setSize(innerWidth, innerHeight); renderer.info.autoReset = false;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = parseInt(THREE.REVISION) > 180 ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;   // PCFSoft wurde in neuen three-Versionen entfernt
   document.getElementById('game').appendChild(renderer.domElement);
   configureTextures(renderer, !S.texHigh);
   const scene = new THREE.Scene(); const camera = new THREE.PerspectiveCamera(S.fov, innerWidth / innerHeight, 0.1, 2200);
@@ -121,7 +144,7 @@ async function boot() {
   const fxaa = new ShaderPass(FXAAShader); composer.addPass(fxaa);
   const smaa = new SMAAPass(innerWidth, innerHeight); composer.addPass(smaa);
   Object.assign(G, { composer, bloom, gtao, grade, fxaa, smaa });
-  const resize = () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); const pr = Math.min(devicePixelRatio, isMobile ? 1.5 : 2) * G.settings.renderScale * (G.dynScale || 1); renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight); composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight); fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr)); };
+  const resize = () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); const pr = Math.min(devicePixelRatio, isMobile ? 1.5 : 2) * G.settings.renderScale * (G.dynScale || 1); renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight); composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight); fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr)); grade.uniforms.uTexel.value.set(1 / Math.max(640, innerWidth), 1 / Math.max(360, innerHeight)); };
   addEventListener('resize', resize); G.resize = resize;
   G.applySettings = applySettings; applySettings(true); tagReflective(G); setupReflection(G); G._refl = G.settings.reflections;
 
@@ -165,7 +188,7 @@ function applySettings(first = false) {
   while (G.lightPool.length < S.lights) { const p = new THREE.PointLight('#ffffff', 0, 26, 1.6); p.layers.enable(1); G.scene.add(p); G.lightPool.push(p); }
   while (G.lightPool.length > S.lights) G.scene.remove(G.lightPool.pop());
   G.gtao.enabled = !!S.ao; G.fxaa.enabled = S.aa === 'fxaa'; G.smaa.enabled = S.aa === 'smaa';
-  const u = G.grade.uniforms; u.uVig.value = S.vignette; u.uGrain.value = S.grain; u.uSat.value = S.saturation; u.uCon.value = S.contrast; u.uCA.value = S.chroma; u.uCB.value.fromArray(CB[S.colorblind] || CB.keen).transpose();
+  const u = G.grade.uniforms; u.uVig.value = S.vignette; u.uGrain.value = S.grain; u.uSat.value = S.saturation; u.uCon.value = S.contrast; u.uCA.value = S.chroma; u.uCB.value.fromArray(CB[S.colorblind] || CB.keen).transpose(); u.uStyle.value = S.artStyle === 'neon' ? 1 : 0; document.body.classList.toggle('neon', S.artStyle === 'neon');
   G.camera.fov = S.fov; G.camera.updateProjectionMatrix();
   G.resize?.();
   if (G.crowd) G.crowd.setActive(S.crowd);
@@ -205,8 +228,10 @@ function applyTime(dt) {
   G.hemi.intensity = (lerp(0.55, 0.2, night) + fairLit * 0.12) * (1 - ov * 0.2); G.hemi.color.set('#bcd4ff').lerp(_c2.set('#4b4f8a'), night); G.hemi.groundColor.set('#5a5650').lerp(_c2.set('#7a5232'), fairLit);
   const env = night > 0.5 ? G.env.night : G.env.day; if (env && G.scene.environment !== env) G.scene.environment = env;
   G.scene.environmentIntensity = night > 0.5 ? lerp(0.25, 0.45, ov) : lerp(1.0, 0.7, ov) * (0.35 + 0.65 * Math.max(0.2, 1 - dusk * 0.6));
+  const neonSt = S.artStyle === 'neon'; G.grade.uniforms.uNight.value = night;
+  if (neonSt) G.scene.fog.color.lerp(_c2.set('#0b3a44'), lerp(0.3, 0.12, night));
   G.renderer.toneMappingExposure = lerp(0.9, 1.0, night) * S.exposure;
-  if (G.bloom) { G.bloom.strength = lerp(0.18, 0.62, night) * S.bloom; G.bloom.threshold = lerp(0.97, 0.88, night); G.bloom.radius = 0.28; }
+  if (G.bloom) { G.bloom.strength = lerp(0.18, 0.62, night) * S.bloom * (neonSt ? 1.2 : 1); G.bloom.threshold = lerp(0.97, 0.88, night); G.bloom.radius = 0.28; }
   bulbUniforms.uOn.value = lerp(0.6, 1, night);
   if (G.glowMat) G.glowMat.opacity = lerp(0.04, 0.56, night) * (1 - wetUniform.value * 0.35);
   if (!G._nightMats) { G._nightMats = []; G.scene.traverse(o => { if (o.material?.userData?.night && !G._nightMats.includes(o.material)) G._nightMats.push(o.material); }); }

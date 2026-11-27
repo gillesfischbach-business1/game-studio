@@ -99,7 +99,35 @@ Maßnahmen: räumlich gebündelte statische Geometrie (Frustum-Culling greift), 
   Lautsprecher-Klang mit Hall zwischen den Fassaden, Limiter gegen Übersteuern. Es spielen immer die 3 nächsten Anlagen.
 - **Optik:** Asphalt neutral grau mit abgefahrenen Parkplatz-Linien, leichter Sommerdunst in der Ferne, nachts warmes
   Streulicht des Lampenmeers auf dem Boden; behoben: Gras schimmerte bei geringer Tiefengenauigkeit durch den Asphalt.
+- **Nachtrag:** echte Blaskapelle für den Hämmelsmarsch (zieht räumlich mit dem Umzug mit), echte Schreie und kräftiger Jubel an laufenden wilden Fahrgeschäften, Antriebsbrummen am nächsten laufenden Fahrgeschäft.
 - Werkzeuge: `tools/audio/mkaudio.py` (Schnitt, nahtlose Loops, Mono-MP3), `tools/audio/fleurs.py` (Sprachproben).
+
+## Version 0.6 – Grafikstile und three.js r187 (in Arbeit)
+- **Grafikstil wählbar** (Optionen → Grafik → „Grafikstil"): *Realistesch* (Standard, Kino-Farbgebung mit warmen Lichtern
+  und kühlen Schatten) und *Neon-Comic* (Tuschekonturen, Farbstufen, blaugrüne Schatten, Hologramm-HUD).
+- **three.js r170 → r187** im Browser (Stufe 1 von ADR-0002, WebGPU). Die Android-App bündelt weiter r170;
+  `js/fx.js` unterstützt beide Versionen.
+- **Figuren der Menge:** Kleidungsvielfalt pro Person (lange Ärmel, offene Jacke, kurze Hose, helle Schuhe),
+  vier Gesichter (neutral, Bart, Brille, geschminkt), dritte Frisur und Glatze, unterschiedliche Staturen,
+  Kontaktschatten am Boden. Kosten: +2 Zeichenbefehle (Frisur, Schatten).
+- **Agententeam (Buden, Fahrgeschäfte, Gehbewegung)**, siehe `production/team/schueberfouer-agents.md`:
+  - Buden und Restaurants mit Theken, Wellenrand-Markisen, Preistafeln, Waren und Geräten je Budenart, Fachwerk und Lichterketten.
+  - Fahrgeschäfte mit Kassenhäuschen, Geländern, Kulissen, Fachwerk, Bedienkabinen; Achterbahn mit Stützen und Bahnhofsdach.
+  - Menge geht mit gebeugten Knien, Armschwung und Gewichtsverlagerung im Stehen.
+  - Gemessen an der Mittelallee (Héich): Fahrgeschäfte +26 bis +48 Zeichenbefehle und +87.000 bis +150.000 Dreiecke; Buden laut
+    Messung des Agenten +12 Zeichenbefehle und +210.000 Dreiecke. Gesamt jetzt rund 1.050–1.660 Zeichenbefehle, 3,4–4,4 Mio. Dreiecke.
+  - Offen: neue Geländer ohne Kollision, Kulissen einseitig, Preisschilder zeigen Grundpreise.
+- **Behoben – fehlender Asphalt:** Wiese (zwei 6-km-Dreiecke) und Asphalt lagen 3 cm übereinander; bildweise gewann die
+  Wiese den Tiefentest. Die Wiese hat jetzt eine Aussparung für die Glacis. Pixelprobe: vorher Bilder 5 und 9 olivgrün,
+  nachher 16 Bilder in Folge grau.
+- **Behoben – Buden vor Fahrgeschäften:** Freihaltezone vor jedem Fahrgeschäft; vorher stand vor Geisterbahn und Magic World
+  eine Bude auf dem Ausstiegspunkt (Magic World: Spielfigur eingeschlossen).
+- **Geländer mit Kollision:** bodennahe Geländer und Zäune der Fahrgeschäfte sind Wände (311 Stück). Test: von allen 22
+  Ausstiegspunkten aus sind 30 m frei erreichbar.
+- **Figurentypen und Sitzende Gäste:** Kleider, Mäntel, Ältere mit Gehstock, Anzüge, Sonnenbrillen, Plaudergruppen, Kinderwagen;
+  Gäste sitzen tischweise an den Restauranttischen (Zustand `sit`, Sitzplätze aus `G.seats` in `js/fair.js`).
+  Gesehen: Sitzende und Plaudergruppe (Nachweise 57, 58). Nicht gesehen: Kinderwagen von vorn, Sonnenbrillen.
+- **QA-Rundgang:** Übersichtsbilder in `production/qa/evidence/schueberfouer/qa-tour/` (Stand vor diesen drei Korrekturen).
 
 ## Dateien
 `index.html` (lokal), `artifact.html` (veröffentlichte Variante), `js/data.js` (alle

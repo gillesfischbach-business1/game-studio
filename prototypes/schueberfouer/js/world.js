@@ -12,7 +12,11 @@ export function buildWorld(G) {
   const bulbs = new Bulbs();
 
   // ---------------- Boden ----------------
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), pbr('grass', { tile: 4, plane: 'xz', color: '#a8b896' }));
+  // Wiese mit Aussparung für die Glacis: lagen Wiese und Asphalt übereinander (3 cm Abstand, Wiese aus zwei 6-km-Dreiecken),
+  // gewann bildweise die Wiese den Tiefentest und der Asphalt samt Linien verschwand. Ohne Überlappung kann das nicht passieren.
+  const gShape = new THREE.Shape([[-3000, -3000], [3000, -3000], [3000, 3000], [-3000, 3000]].map(([x, y]) => new THREE.Vector2(x, y)));
+  gShape.holes.push(new THREE.Path(GLACIS_POLY.map(([x, z]) => new THREE.Vector2(x, -z))));
+  const ground = new THREE.Mesh(new THREE.ShapeGeometry(gShape), pbr('grass', { tile: 4, plane: 'xz', color: '#a8b896' }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
 
   // Glacis-Asphalt (Fotoscan) + Parkplatz-Markierungen als Decal (die Glacis ist sonst ein Parkplatz!)
@@ -37,7 +41,8 @@ export function buildWorld(G) {
 
   // ---------------- Straßen ----------------
   const roadMat = pbr('road', { tile: 6, plane: 'xz', color: '#8a8a8e', reflect: true });
-  const walkMat = pbr('paving', { tile: 2.4, color: '#c9c4ba' });
+  // Tönung gleicht den Braunstich der Pflaster-Textur aus (Mittelwert 127/108/86 -> neutrales Grau), sonst liest sich der Gehweg als Holzsteg
+  const walkMat = pbr('paving', { tile: 2.4, color: '#b6d4ff' });
   const lineMat = M('#e6e6e6', { roughness: 0.6 });
   G.roadSegs = [];
   const seg = (a, b, w, name) => {

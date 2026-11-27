@@ -15,7 +15,7 @@ export const DEFAULTS = {
   // Spill
   timeScale: 1, cycle: true, weather: 'kloer', hudMini: true, hudMission: true, hudKeys: true, hudPrompt: true, guideArrows: true, autosave: true,
   // Accessibilitéit
-  uiScale: 1, reduceFlash: false, reduceMotion: false, colorblind: 'keen', subtitles: true, highContrast: false,
+  artStyle: 'real', uiScale: 1, reduceFlash: false, reduceMotion: false, colorblind: 'keen', subtitles: true, highContrast: false,
   // Steierung
   cloudUrl: '', cloudToken: '',
   keys: { fwd: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', run: 'ShiftLeft', jump: 'Space', act: 'KeyE', compass: 'KeyQ', map: 'KeyM', journal: 'KeyJ', wardrobe: 'KeyI', view: 'KeyV', photo: 'KeyP', time: 'KeyT' },
@@ -38,6 +38,7 @@ export function saveSettings(s) { try { localStorage.setItem('fouer2026_settings
 // t: 'sel' Auswahl, 'sld' Schieberegler, 'tog' Schalter, 'btn' Knopf
 export const OPTION_PAGES = [
   { id: 'grafik', label: 'Grafik', items: [
+    { k: 'artStyle', t: 'sel', l: 'Grafikstil', o: [['real', 'Realistesch'], ['neon', 'Neon-Comic']], d: 'Neon-Comic: Tuschekonturen, Faarfstufen an Neonfaarwen. Realistesch: fotorealistesch Duerstellung.' },
     { k: 'preset', t: 'sel', l: 'Qualitéits-Preset', o: [['niddreg', 'Niddreg'], ['mettel', 'Mëttel'], ['heich', 'Héich'], ['ultra', 'Ultra']], d: 'Setzt all Grafik-Optiounen op eemol.' },
     { k: 'dynRes', t: 'tog', l: 'Dynamesch Opléisung (flësseg 60 FPS)', d: 'Reduzéiert d\'Opléisung automatesch, wann d\'Bildrate ënner 55 FPS fält, a geet erëm erop, soubal et flësseg leeft.' },
     { k: 'fpsCap', t: 'sel', l: 'Bildrate-Limit', o: [[0, 'Keen'], [30, '30 FPS (Akku spueren)'], [60, '60 FPS']] },

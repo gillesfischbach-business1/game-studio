@@ -14,6 +14,144 @@ function beam(B, a, b, r, mat, seg = 6) {
   _q.setFromUnitVectors(UP, dir); _m.compose(_a.clone().add(_b).multiplyScalar(0.5), _q, _s);
   B.addM(new THREE.CylinderGeometry(r, r, len, seg), mat, _m);
 }
+
+// =============================================================
+// Detail-Baukasten: Kleinteile (Geländer, Treppen, Kulissen, Kabinen, Packwagen …)
+// Alle Kleinteile einer Attraktion werden je Material zu EINER Geometrie verschmolzen und gehen
+// dann durch this.B -> höchstens 3 zusätzliche Draw-Calls je Attraktion (Lack, Riffelblech, Holz).
+// WICHTIG: hier kein rand()/pick() benutzen (der Zufalls-Seed der restlichen Welt bliebe sonst nicht gleich).
+const STEEL = '#c3c8d0', DARK = '#262930', RUB = '#101114', TIMB = '#8b6a45', YEL = '#ffc400', GLASS = '#bfe6ff', PLATE = '#a4abb6', CONC = '#8d9198';
+const PLATE_GAIN = 1.6;   // Riffelblech-Foto ist dunkel -> Vertex-Farbe hellt auf
+// Kulissen-Tafeln sind einseitig (von hinten unsichtbar), damit die Verfolger-Kamera (9 m Abstand) beim Mitfahren nie verdeckt wird.
+// true = massive Tafeln (von hinten geschlossen, können dann aber die Kamera verdecken)
+const BACKDROP_SOLID = false;
+/** Lack-Material: Vertex-Farbe = Farbton, uv.x = Selbstleuchten (Fenster, Leuchtkästen) */
+const detMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.3 });
+detMat.onBeforeCompile = (sh) => {
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vDetEm;').replace('#include <begin_vertex>', '#include <begin_vertex>\n  vDetEm = uv.x;');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vDetEm;').replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += diffuseColor.rgb * vDetEm;');
+};
+detMat.customProgramCacheKey = () => 'rideDetail';
+const _ug = {}, _dc = new THREE.Color(), _dI = new THREE.Matrix4();
+const _dp = new THREE.Vector3(), _dq = new THREE.Quaternion(), _de = new THREE.Euler(), _ds = new THREE.Vector3(), _dm = new THREE.Matrix4();
+const uBox = () => _ug.b || (_ug.b = new THREE.BoxGeometry(1, 1, 1).toNonIndexed());
+const uPlane = () => _ug.p || (_ug.p = new THREE.PlaneGeometry(1, 1).toNonIndexed());
+const uCyl = (seg) => _ug[seg] || (_ug[seg] = new THREE.CylinderGeometry(1, 1, 1, seg, 1, true).toNonIndexed());
+/** Punkte auf einem Kreisbogen (xz), ca. alle 1,5 m */
+const arcPts = (r, y, a0, a1, step = 1.5) => { const n = Math.max(1, Math.ceil(Math.abs(a1 - a0) * r / step)); return Array.from({ length: n + 1 }, (_, i) => { const a = a0 + (a1 - a0) * i / n; return [Math.cos(a) * r, y, Math.sin(a) * r]; }); };
+/** Drehung ry, damit lokales +z zur Mitte zeigt (für Teile auf einem Kreis beim Winkel a) */
+const faceIn = (a) => Math.atan2(-Math.cos(a), -Math.sin(a));
+class Det {
+  constructor() { this.L = { p: [], t: [], w: [] }; this.pm = null; this.walls = []; }
+  /** Eltern-Rahmen (Position + Drehung um y) für die folgenden Teile; at(null) = aus */
+  at(x, y, z, ry = 0) { this.pm = x === null ? null : new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0)), new THREE.Vector3(1, 1, 1)); return this; }
+  /** o: k = 'p' Lack | 't' Riffelblech | 'w' Holz, em = Leuchtstärke */
+  put(geo, m, col, o) { const g = geo.index ? geo.toNonIndexed() : geo.clone(); g.applyMatrix4(m); if (this.pm) g.applyMatrix4(this.pm); this.L[o?.k || 'p'].push([g, col, o?.em || 0]); return this; }
+  box(w, h, d, col, x, y, z, ry = 0, o) { _dm.compose(_dp.set(x, y, z), _dq.setFromEuler(_de.set(o?.rx || 0, ry, o?.rz || 0)), _ds.set(w, h, d)); return this.put(uBox(), _dm, col, o); }
+  /** Einseitige Tafel (Sichtseite = lokales +z bei ry = 0), siehe BACKDROP_SOLID */
+  panel(w, h, col, x, y, z, ry = 0, o) { if (BACKDROP_SOLID) return this.box(w, h, 0.05, col, x, y, z, ry, o); _dm.compose(_dp.set(x, y, z), _dq.setFromEuler(_de.set(0, ry, o?.rz || 0)), _ds.set(w, h, 1)); return this.put(uPlane(), _dm, col, o); }
+  /** Zylinder/Kegel (o.r2 = oberer Radius, o.cap = Deckel, o.rx/o.rz = kippen) */
+  cyl(r, h, col, x, y, z, seg = 6, o) { _dm.compose(_dp.set(x, y, z), _dq.setFromEuler(_de.set(o?.rx || 0, o?.ry || 0, o?.rz || 0)), _ds.set(1, 1, 1)); return this.put(new THREE.CylinderGeometry(o?.r2 ?? r, r, h, seg, 1, !o?.cap), _dm, col, o); }
+  _seg(a, b) { _a.set(a[0], a[1], a[2]); _b.set(b[0], b[1], b[2]); const len = _a.distanceTo(_b); if (len < 1e-4) return 0; _dq.setFromUnitVectors(UP, _dp.copy(_b).sub(_a).normalize()); _dp.copy(_a).add(_b).multiplyScalar(0.5); return len; }
+  /** Vierkant-Stab von a nach b */
+  bar(a, b, w, col, o) { const len = this._seg(a, b); if (!len) return this; _dm.compose(_dp, _dq, _ds.set(w, len, o?.d || w)); return this.put(uBox(), _dm, col, o); }
+  /** Rohr von a nach b */
+  tube(a, b, r, col, seg = 5, o) { const len = this._seg(a, b); if (!len) return this; _dm.compose(_dp, _dq, _ds.set(r, len, r)); return this.put(uCyl(seg), _dm, col, o); }
+  /** Geländer entlang einer Polylinie (y = Fußpunkt). o: h Höhe, mid Zwischenholme, bars Stababstand (Absperrgitter), post Pfostenabstand */
+  rail(pts, col = STEEL, o = {}) { const h = o.h || 1.05, s = o.s || 0.05, mid = o.mid ?? (o.bars ? 0 : 1);
+    for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2]; const len = Math.hypot(dx, dz); if (len < 0.05) continue;
+      // Bodennahe Geländer/Zäune merken: flush() macht daraus Kollisionswände (Podest-Geländer über 0,6 m und Treppenläufe nicht)
+      if (o.col !== false && Math.abs(dy) < 0.05 && a[1] <= 0.6 && len > 0.4) { _a.set(a[0], 0, a[2]); _b.set(b[0], 0, b[2]); if (this.pm) { _a.applyMatrix4(this.pm); _b.applyMatrix4(this.pm); } this.walls.push([_a.x, _a.z, _b.x, _b.z]); }
+      const m = Math.max(1, Math.round(len / (o.post || 1.8)));
+      for (let j = i ? 1 : 0; j <= m; j++) { const t = j / m; this.box(s * 1.3, h, s * 1.3, col, a[0] + dx * t, a[1] + dy * t + h / 2, a[2] + dz * t); }
+      this.bar([a[0], a[1] + h, a[2]], [b[0], b[1] + h, b[2]], s * 1.4, col);
+      for (let k = 1; k <= mid; k++) this.bar([a[0], a[1] + h * k / (mid + 1), a[2]], [b[0], b[1] + h * k / (mid + 1), b[2]], s * 0.8, col);
+      if (o.bars) { this.bar([a[0], a[1] + 0.12, a[2]], [b[0], b[1] + 0.12, b[2]], s * 0.8, col); const nb = Math.round(len / o.bars); for (let j = 1; j < nb; j++) { const t = j / nb; this.box(s * 0.5, h - 0.12, s * 0.5, col, a[0] + dx * t, a[1] + dy * t + 0.06 + h / 2, a[2] + dz * t); } } }
+    return this; }
+  /** Leuchtpunkte (kleine selbstleuchtende Würfel) entlang einer Strecke: statische Lichterkette ohne zusätzlichen Draw-Call */
+  dots(a, b, sp, col, em = 2.4, s = 0.13) { const n = Math.max(1, Math.round(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / sp)); for (let i = 0; i <= n; i++) { const t = i / n; this.box(s, s, s, typeof col === 'function' ? col(i) : col, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, 0, { em }); } return this; }
+  /** Rundgeländer: Liste von Winkel-Abschnitten [a0, a1] */
+  ring(r, y, parts, col, o) { for (const [a0, a1] of parts) this.rail(arcPts(r, y, a0, a1), col, o); return this; }
+  /** Treppe im lokalen Rahmen (at): oberste Kante bei z = 0 auf Höhe H, läuft nach +z hinunter */
+  stairs(w, H, n, run = 0.3, col = PLATE, o = {}) { const rise = H / (n + 1);
+    for (let i = 0; i < n; i++) { const top = H - (i + 1) * rise; this.box(w, top, run, col, 0, top / 2, run * (i + 0.5), 0, { k: o.k || 'p' }); this.box(w + 0.02, 0.03, 0.05, YEL, 0, top + 0.005, run * (i + 1) - 0.025); }
+    if (o.rail !== false) for (const sx of [-1, 1]) this.rail([[sx * (w / 2 - 0.03), H - rise, 0.05], [sx * (w / 2 - 0.03), 0, run * n + 0.05]], o.railCol || STEEL, { mid: 1 });
+    return this; }
+  /** Alles in den Batcher der Attraktion geben */
+  flush(B, ride) {
+    if (ride?.G?.fairBox) { for (const [x0, z0, x1, z1] of this.walls) { const dx = x1 - x0, dz = z1 - z0; ride.G.fairBox(ride.cfg.u + (x0 + x1) / 2, ride.cfg.v + (z0 + z1) / 2, Math.hypot(dx, dz) / 2, 0.1, Math.atan2(-dz, dx), 'rail'); } }
+    this.walls.length = 0;
+    for (const k of ['p', 't', 'w']) { const L = this.L[k]; if (!L.length) continue; let n = 0; for (const it of L) n += it[0].attributes.position.count;
+      const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), col = new Float32Array(n * 3), uv = new Float32Array(n * 2); let o = 0; const gain = k === 't' ? PLATE_GAIN : 1;
+      for (const [g, c, em] of L) { const cnt = g.attributes.position.count; pos.set(g.attributes.position.array, o * 3); nor.set(g.attributes.normal.array, o * 3); _dc.set(c);
+        for (let i = o; i < o + cnt; i++) { col[i * 3] = _dc.r * gain; col[i * 3 + 1] = _dc.g * gain; col[i * 3 + 2] = _dc.b * gain; uv[i * 2] = em; } o += cnt; }
+      const m = new THREE.BufferGeometry(); m.setAttribute('position', new THREE.BufferAttribute(pos, 3)); m.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); m.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); m.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      B.addM(m, k === 'p' ? detMat : k === 't' ? pbr('metal', { tile: 1.2, metalness: 0.55, vertexColors: true }) : pbr('wood', { tile: 1.5, vertexColors: true }), _dI); L.length = 0; } }
+}
+/** Unterpallung: Kanthölzer und Fußplatte */
+function footPad(K, x, z, y = 0, s = 1) {
+  K.box(1.5 * s, 0.14, 0.26, TIMB, x, y + 0.07, z - 0.3 * s); K.box(1.5 * s, 0.14, 0.26, TIMB, x, y + 0.07, z + 0.3 * s); K.box(0.9 * s, 0.07, 0.9 * s, DARK, x, y + 0.175, z);
+}
+/** Kabelstrang am Boden (3 Leitungen) mit gelb-schwarzer Kabelbrücke in der Mitte */
+function cable(K, a, b, y = 0.04) { const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz) || 1, nx = -dz / len, nz = dx / len;
+  for (const o of [-0.09, 0, 0.09]) K.bar([a[0] + nx * o, y, a[1] + nz * o], [b[0] + nx * o, y, b[1] + nz * o], 0.06, RUB);
+  K.box(0.5, 0.09, 0.9, YEL, (a[0] + b[0]) / 2, y + 0.03, (a[1] + b[1]) / 2, Math.atan2(nx, nz)); K.box(0.52, 0.1, 0.12, RUB, (a[0] + b[0]) / 2, y + 0.03, (a[1] + b[1]) / 2, Math.atan2(nx, nz));
+}
+/** Packwagen: Koffer auf Fahrgestell, Tandemachse, Deichsel, Türen, Lüftungsgitter, Stützen (Länge entlang lokalem x) */
+function trailer(K, x, z, ry, len = 6, col = '#e9e9ec', acc = '#d90429') { K.at(x, 0, z, ry); const w = 2.3, h = 2.3, y0 = 0.75;
+  K.box(len, h, w, col, 0, y0 + h / 2, 0); K.box(len + 0.04, 0.3, w + 0.04, acc, 0, y0 + 0.5, 0);
+  K.box(len + 0.08, 0.08, w + 0.08, STEEL, 0, y0 + h + 0.04, 0); K.box(len + 0.06, 0.14, w + 0.06, DARK, 0, y0 - 0.07, 0);
+  for (let i = 1; i < len / 1.2 - 0.2; i++) K.box(0.05, h - 0.1, w + 0.05, STEEL, -len / 2 + i * 1.2, y0 + h / 2 + 0.2, 0);
+  K.box(0.03, h - 0.3, 0.05, DARK, len / 2 + 0.02, y0 + h / 2, 0); for (const s of [-1, 1]) { K.box(0.04, h - 0.3, 0.06, STEEL, len / 2 + 0.03, y0 + h / 2, s * (w / 2 - 0.08)); K.box(0.05, 0.9, 0.05, STEEL, len / 2 + 0.04, y0 + 1.1, s * 0.3); }
+  for (const s of [-1, 1]) { K.box(1.3, 0.75, 0.04, DARK, -len / 4, y0 + 1.5, s * (w / 2 + 0.02)); for (let j = 0; j < 4; j++) K.box(1.2, 0.04, 0.05, STEEL, -len / 4, y0 + 1.25 + j * 0.17, s * (w / 2 + 0.03)); K.box(0.12, 0.12, 0.04, '#39ff14', -len / 4 + 0.95, y0 + 1.75, s * (w / 2 + 0.03), 0, { em: 3 });
+    for (const ax of [-0.5, 0.5]) { K.cyl(0.42, 0.26, RUB, len * 0.08 + ax, 0.42, s * (w / 2 - 0.2), 10, { rx: Math.PI / 2, cap: true }); K.cyl(0.18, 0.28, STEEL, len * 0.08 + ax, 0.42, s * (w / 2 - 0.2), 8, { rx: Math.PI / 2, cap: true }); }
+    K.box(2.1, 0.06, 0.34, DARK, len * 0.08, 0.9, s * (w / 2 - 0.18));
+    for (const e of [-1, 1]) K.box(0.1, y0, 0.1, STEEL, e * (len / 2 - 0.35), y0 / 2, s * (w / 2 - 0.25));
+    K.bar([-len / 2, 0.62, s * 0.7], [-len / 2 - 1.5, 0.55, 0], 0.1, DARK); }
+  K.box(0.08, 0.55, 0.08, STEEL, -len / 2 - 1.3, 0.28, 0); K.box(0.2, 0.12, 0.2, STEEL, -len / 2 - 1.5, 0.55, 0);
+  K.at(null);
+}
+/** Stromaggregat / Hydraulikaggregat: Haube mit Lüftungsschlitzen, Auspuff, Kontrolllampe */
+function genset(K, x, y, z, ry, col = '#2f6b3a') { K.at(x, y, z, ry);
+  K.box(2.2, 0.16, 1.1, DARK, 0, 0.08, 0); K.box(2.1, 1.25, 1.0, col, 0, 0.78, 0); K.box(2.16, 0.06, 1.06, DARK, 0, 1.43, 0);
+  for (const s of [-1, 1]) { for (let j = 0; j < 5; j++) K.box(0.8, 0.04, 0.03, DARK, -0.5, 0.55 + j * 0.14, s * 0.51); K.box(0.6, 0.7, 0.03, DARK, 0.6, 0.85, s * 0.51); K.box(0.08, 0.08, 0.03, '#39ff14', 0.6, 1.05, s * 0.53, 0, { em: 3 }); K.box(0.08, 0.08, 0.03, '#ff3b30', 0.75, 1.05, s * 0.53, 0, { em: 2 }); }
+  K.cyl(0.06, 0.5, STEEL, -0.8, 1.7, 0.2, 6); K.box(0.3, 0.3, 0.3, YEL, 0.85, 1.6, -0.25);
+  K.at(null);
+}
+/** Lautsprecher-Turm */
+function speakers(K, x, y, z, ry, n = 2) { K.at(x, y, z, ry);
+  for (let i = 0; i < n; i++) { const b = i * 0.94; K.box(0.72, 0.9, 0.55, RUB, 0, b + 0.45, 0); K.box(0.66, 0.84, 0.02, '#2c2f36', 0, b + 0.45, 0.28); K.cyl(0.23, 0.03, '#4a4e57', 0, b + 0.32, 0.29, 8, { rx: Math.PI / 2, cap: true }); K.cyl(0.1, 0.03, '#4a4e57', 0, b + 0.72, 0.29, 8, { rx: Math.PI / 2, cap: true }); }
+  K.at(null);
+}
+/** Bedienkabine (Rekommandeur): Brüstung, leuchtendes Fensterband, Dach mit Überstand, Pult, Strahler, Lautsprecher. Lokales +z = Blick zur Anlage */
+function opCabin(K, x, y, z, ry, col = '#2b2d42', acc = '#ffd166', w = 2.4, d = 1.8) { K.at(x, y, z, ry); const h = 2.45;
+  K.box(w, 0.95, d, col, 0, 0.475, 0); K.box(w + 0.03, 0.14, d + 0.03, acc, 0, 0.88, 0); K.box(w, 0.36, d, col, 0, h - 0.18, 0); K.box(w, 1.14, 0.06, col, 0, 1.52, -d / 2 + 0.03);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) K.box(0.1, h, 0.1, acc, sx * (w / 2 - 0.05), h / 2, sz * (d / 2 - 0.05));
+  K.box(w - 0.2, 1.14, 0.03, GLASS, 0, 1.52, d / 2 - 0.04, 0, { em: 0.55 }); for (const sx of [-1, 1]) K.box(0.03, 1.14, d - 0.2, GLASS, sx * (w / 2 - 0.04), 1.52, 0.03, 0, { em: 0.45 });
+  K.box(0.05, 1.14, 0.05, acc, 0, 1.52, d / 2 - 0.03);
+  K.box(w + 0.5, 0.1, d + 0.5, acc, 0, h + 0.05, 0); K.box(w + 0.56, 0.05, d + 0.56, DARK, 0, h + 0.125, 0);
+  K.box(w - 0.5, 0.12, 0.45, DARK, 0, 1.0, d / 2 - 0.35); K.box(0.3, 0.03, 0.15, '#ff3b30', -0.45, 1.07, d / 2 - 0.35, 0, { em: 2 }); K.box(0.3, 0.03, 0.15, '#39ff14', 0.05, 1.07, d / 2 - 0.35, 0, { em: 2 });
+  for (const sx of [-1, 1]) { K.box(0.34, 0.22, 0.14, DARK, sx * (w / 2 - 0.3), h + 0.3, d / 2 + 0.12, 0, { rx: 0.35 }); K.box(0.28, 0.16, 0.03, '#fff4d6', sx * (w / 2 - 0.3), h + 0.27, d / 2 + 0.2, 0, { rx: 0.35, em: 2.5 }); }
+  K.box(0.5, 0.4, 0.4, RUB, 0, h + 0.35, -d / 2 + 0.3); K.box(0.04, 1.2, 0.04, STEEL, w / 2 - 0.15, h + 0.7, -d / 2 + 0.15);
+  K.at(null);
+}
+/** Ein-/Ausgangsportal: Pfosten, Querbalken mit Leuchtkasten (grün = Agank, rot = Ausgank), Schwenkbügel */
+function gate(K, x, y, z, ry, w = 1.5, col = '#39d353') { K.at(x, y, z, ry);
+  for (const s of [-1, 1]) { K.box(0.1, 2.3, 0.1, STEEL, s * w / 2, 1.15, 0); K.box(0.26, 0.05, 0.26, DARK, s * w / 2, 0.025, 0); }
+  K.box(w + 0.3, 0.34, 0.14, DARK, 0, 2.45, 0); for (const s of [-1, 1]) K.box(w + 0.1, 0.2, 0.03, col, 0, 2.45, s * 0.08, 0, { em: 1.6 });
+  K.box(w - 0.2, 0.05, 0.05, YEL, 0, 0.95, 0);
+  K.at(null);
+}
+/** Kulisse/Rückwand im lokalen Rahmen: gerahmte Paneele entlang x (x0..x1) bei z, Schauseite nach +z·f; Zierleisten, Leuchtrauten, Streben nach hinten, Lichtleiste oben */
+function backdrop(ride, K, x0, x1, z, f, y0, H, cols, o = {}) { const W = x1 - x0, n = Math.max(1, Math.round(W / (o.pw || 2.2))), pw = W / n, acc = o.acc || '#f5d76e', mid = (x0 + x1) / 2; const ry = f > 0 ? 0 : Math.PI;
+  for (let i = 0; i < n; i++) { const cx = x0 + pw * (i + 0.5), c1 = cols[(i + (o.i0 || 0)) % cols.length], c2 = cols[(i + (o.i0 || 0) + 1) % cols.length];
+    K.panel(pw - 0.1, H - 0.5, c1, cx, y0 + H / 2, z, ry); K.panel(pw - 0.7, H - 1.6, c2, cx, y0 + H / 2, z + f * 0.03, ry);
+    if (o.lamp !== false) K.panel(0.5, 0.5, acc, cx, y0 + H * 0.62, z + f * 0.06, ry, { rz: Math.PI / 4, em: 1.3 }); }
+  for (let i = 0; i <= n; i++) { const px = x0 + pw * i; K.box(0.14, H, 0.14, o.frame || STEEL, px, y0 + H / 2, z);
+    if (o.strut) { K.bar([px, y0 + H * 0.75, z - f * 0.08], [px, y0 + 0.05, z - f * o.strut], 0.07, DARK); K.bar([px, y0 + 0.06, z], [px, y0 + 0.06, z - f * o.strut], 0.07, DARK); } }
+  K.box(W + 0.3, 0.28, 0.2, acc, mid, y0 + H - 0.14, z); K.box(W + 0.3, 0.3, 0.2, acc, mid, y0 + 0.15, z); K.box(W, 0.08, 0.08, DARK, mid, y0 + H * 0.5, z - f * 0.1);
+  if (o.bulb !== false) ride.bulbs.line([x0 + 0.2, y0 + H + 0.1, z + f * 0.08], [x1 - 0.2, y0 + H + 0.1, z + f * 0.08], 0.42, o.bulb || '#fff1b8', 1, 2.6);
+}
 const SHIRTS = ['#e63946', '#1d3557', '#457b9d', '#f1faee', '#2a9d8f', '#e9c46a', '#f4a261', '#264653', '#8338ec', '#ff006e', '#222222', '#6a994e', '#bc4749', '#ffffff'];
 const SKINS = ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#f5d0b0'];
 let riderGeo;
@@ -84,8 +222,22 @@ export class Ride {
     B.add(new THREE.BoxGeometry(1.8, 2.4, 1.6), pbr('shutter', { tile: 1.2, color: '#4a4e6a', metalness: 0.4 }), 0, 1.2, 0);
     B.add(new THREE.BoxGeometry(1.4, 0.9, 0.05), Glow('#a9def9', 0.7), 0, 1.5, 0.81);
     B.add(new THREE.BoxGeometry(2.2, 0.25, 2), M('#d90429'), 0, 2.5, 0);
-    B.add(new THREE.BoxGeometry(1.9, 0.5, 0.08), new THREE.MeshBasicMaterial({ map: signTex('KEESS', { w: 256, h: 64, fg: signColor, border: '#d90429' }), toneMapped: false, color: new THREE.Color(1.5, 1.5, 1.5) }), 0, 2.95, 0.9);
+    // Schild und Preistafel teilen sich EINE Textur (oben „KEESS“, unten der Preis) -> kein zusätzlicher Draw-Call
+    const pr = euro(this.price);
+    const kt = canvasTex(256, 128, (g) => { g.fillStyle = '#1a0a2e'; g.fillRect(0, 0, 256, 128); g.strokeStyle = '#d90429'; g.lineWidth = 5; g.strokeRect(4, 4, 248, 56); g.strokeRect(4, 68, 248, 56);
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '38px Bungee, Impact, sans-serif'; g.shadowColor = signColor; g.shadowBlur = 9; g.fillStyle = signColor; g.fillText('KEESS', 128, 34);
+      g.shadowBlur = 0; g.fillStyle = '#ffffff'; g.font = '32px Bungee, Impact, sans-serif'; g.fillText(pr, 128, 98); });
+    const km = new THREE.MeshBasicMaterial({ map: kt, toneMapped: false, color: new THREE.Color(1.5, 1.5, 1.5) });
+    const half = (geo, v0) => { const a = geo.attributes.uv; for (let i = 0; i < a.count; i++) a.setY(i, v0 + a.getY(i) * 0.5); return geo; };
+    B.add(half(new THREE.BoxGeometry(1.9, 0.5, 0.08), 0.5), km, 0, 2.95, 0.9);
+    B.add(half(new THREE.BoxGeometry(1.2, 0.5, 0.05), 0), km, 0, 0.6, 0.83);
+    // Kasse-Details mit den Materialien von oben: Sockel, Eckprofile, Zahlbrett mit Konsolen, Fensterrahmen, Vordach, Seitenfenster
+    const red = M('#d90429'), win = Glow('#a9def9', 0.7), bx = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+    B.add(bx(1.96, 0.14, 1.76), red, 0, 0.07, 0);
+    for (const sx of [-1, 1]) { for (const sz of [-1, 1]) B.add(bx(0.1, 2.38, 0.1), red, sx * 0.9, 1.19, sz * 0.8); B.add(bx(0.06, 0.26, 0.3), red, sx * 0.7, 0.86, 0.94); B.add(bx(0.07, 0.96, 0.07), red, sx * 0.745, 1.5, 0.83); B.add(bx(0.04, 0.6, 0.8), win, sx * 0.91, 1.55, 0); }
+    B.add(bx(1.7, 0.07, 0.38), red, 0, 1.01, 0.97); B.add(bx(1.56, 0.07, 0.07), red, 0, 1.98, 0.83); B.add(bx(2.3, 0.06, 0.8), red, 0, 2.27, 1.3, 0.3);
     B.at(null);
+    if (this.G.fairBulbs) { this.G.fairBulbs.at(u, 0, v, ry).line([-1.05, 2.68, 1.02], [1.05, 2.68, 1.02], 0.3, signColor, 1, 2.4); this.G.fairBulbs.at(null); }
     this.G.fairCircle(u, v, 1.2, 'booth');
     const f = L(u + Math.sin(ry) * 1.9, v + Math.cos(ry) * 1.9);
     this.boothPos = f;
@@ -116,8 +268,31 @@ class Ferris extends Ride {
     this.B.add(new THREE.CylinderGeometry(0.9, 0.9, 8, 12), steel, 0, HUB, 0, Math.PI / 2);
     // Plattform & Treppe
     this.B.add(new THREE.BoxGeometry(12, 1.0, 6), pbr('metal', { tile: 1.5, color: '#b9a3d6', metalness: 0.6, roughness: 0.6 }), 0, 0.5, 0);
-    for (let i = 0; i < 4; i++) this.B.add(new THREE.BoxGeometry(3, 0.25, 0.6), M('#777'), 0, 0.12 + i * 0.25, 3.3 + i * 0.6 - 2.1 + 2.8);
+    for (let i = 0; i < 4; i++) this.B.add(new THREE.BoxGeometry(3, 0.25, 0.6), M('#777'), 0, 0.725 - i * 0.15, 3.3 + i * 0.6);   // Stufen: vom Podest (1,0) hinunter auf die Kufe (0,4)
     this.B.add(new THREE.BoxGeometry(32, 0.4, 2.2), M('#4a4e69'), 0, 0.2, -5.6); this.B.add(new THREE.BoxGeometry(32, 0.4, 2.2), M('#4a4e69'), 0, 0.2, 5.6);
+    // --- Details: Riffelblech-Podest, Geländer, Unterpallung, Fachwerk-Diagonalen, Reibrad-Antrieb, Zaun, Packwagen, Aggregat
+    const K = new Det(), WH = '#f4f4f4', GRN = '#35c759';
+    K.box(12.3, 0.05, 6.3, PLATE, 0, 1.03, 0, 0, { k: 't' }); K.box(12.36, 0.16, 6.36, GRN, 0, 0.9, 0); K.box(12.2, 0.1, 6.2, DARK, 0, 0.05, 0);
+    for (let x = -6; x <= 6.01; x += 1.5) for (const z of [-3.03, 3.03]) K.box(0.07, 0.72, 0.04, STEEL, x, 0.46, z);
+    K.rail([[5.9, 1.05, -1.7], [5.9, 1.05, -2.9], [-5.9, 1.05, -2.9], [-5.9, 1.05, -1.7]], WH, { mid: 2 });
+    for (const s of [-1, 1]) { K.rail([[s * 5.9, 1.05, 1.7], [s * 5.9, 1.05, 2.9], [s * 1.6, 1.05, 2.9]], WH, { mid: 2 }); K.rail([[s * 1.55, 0.95, 3.05], [s * 1.55, 0.4, 5.35]], WH);
+      for (let i = 0; i < 4; i++) K.box(0.05, 0.03, 0.6, YEL, s * 1.45, 0.855 - i * 0.15, 3.3 + i * 0.6);
+      // Fußpunkte der A-Böcke: Unterpallung + Querriegel; Nabenlager
+      for (const t of [-1, 1]) footPad(K, s * 16, t * 5.12, 0.4, 1.2);
+      K.bar([s * 16, 0.62, -5.1], [s * 16, 0.62, 5.1], 0.3, WH); K.box(1.5, 1.5, 0.9, WH, 0, HUB, s * 3.3); K.cyl(1.1, 0.3, DARK, 0, HUB, s * 4.1, 10, { rx: Math.PI / 2, cap: true });
+      // Fachwerk-Diagonalen in den A-Böcken (zwischen den vorhandenen Sprossen)
+      for (let k = 1; k < 8; k++) { const t0 = k / 9, t1 = (k + 1) / 9, d = k % 2 ? 1 : -1; K.tube([d * (-16 + 16 * t0), HUB * t0, s * 3.2 * (1.6 - 0.6 * t0)], [d * (16 - 16 * t1), HUB * t1, s * 3.2 * (1.6 - 0.6 * t1)], 0.06, STEEL); }
+      // Reibrad-Antrieb: Ständer mit Strebe, Motor, Reifen seitlich am Radkranz (außerhalb der Gondelbahn)
+      for (const t of [-1, 1]) { K.box(0.26, 3.9, 0.26, WH, s * 4.6, 3.0, t * 1.95); K.bar([s * 4.6, 3.3, t * 1.95], [s * 5.6, 1.06, t * 1.95], 0.14, WH); K.box(0.6, 0.55, 0.5, YEL, s * 4.6, 5.1, t * 1.88);
+        K.cyl(0.34, 0.24, RUB, s * 4.6, 5.3, t * 1.3, 10, { rx: Math.PI / 2, cap: true }); K.tube([s * 4.6, 5.3, t * 1.3], [s * 4.6, 5.3, t * 1.9], 0.06, STEEL); }
+      // Zaun: seitlich (ab Boden) und vorne (auf der Kufe, mit Lücke für Treppe und Kasse)
+      K.rail([[s * 16.9, 0, -5.4], [s * 16.9, 0, 5.4]], STEEL, { h: 1.45, mid: 2, post: 2.2 });
+      for (const t of [-1, 1]) K.dots([s * 15.3, 1.4, t * 5.62], [s * 0.9, 28.3, t * 3.75], 0.9, '#ffffff', 2.2, 0.16); }
+    K.rail([[-16.9, 0.4, -5.4], [16.9, 0.4, -5.4]], STEEL, { mid: 2, post: 2.4 });
+    for (const [x0, x1] of [[-16.9, -1.7], [1.7, 7.7], [10.3, 16.9]]) K.rail([[x0, 0.4, 5.4], [x1, 0.4, 5.4]], STEEL, { bars: 0.3, post: 2.4 });
+    trailer(K, -11.5, -3.85, Math.PI, 6, WH, GRN); cable(K, [-8.3, -3.3], [-6.1, -2.2]);
+    genset(K, 12, 0, -4.3, 0); cable(K, [10.9, -4.3], [6.1, -2.4]);
+    K.flush(this.B, this);
     // Rotor
     this.rotor = new THREE.Group(); this.rotor.position.y = HUB; this.g.add(this.rotor);
     const RB = new Batcher(), rb = new Bulbs();
@@ -181,6 +356,14 @@ class Carousel extends Ride {
     super(G, id, cfg); this.runT = 70; this.loadT = 10;
     const gold = M('#d4a017', { metalness: 0.8, roughness: 0.3 }), cream = M('#f5e6c8'), red = M('#9b2226');
     this.B.add(new THREE.CylinderGeometry(8.6, 8.8, 0.5, 40), pbr('wood', { tile: 1.2, color: '#a46a4c' }), 0, 0.25, 0);
+    // --- Details: Sockelblende (rot/creme), festes Geländer mit Ein-/Ausgangstor, Holzstufe
+    const K = new Det();
+    for (let i = 0; i < 28; i++) { const a = (i + 0.5) / 28 * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a), ry = -a + Math.PI / 2;
+      K.box(1.95, 0.42, 0.05, i % 2 ? '#9b2226' : '#f5e6c8', c * 8.8, 0.23, sn * 8.8, ry); K.box(0.17, 0.17, 0.04, '#d4a017', c * 8.83, 0.24, sn * 8.83, ry, { rz: Math.PI / 4 }); K.box(1.95, 0.04, 0.3, '#d4a017', c * 8.68, 0.49, sn * 8.68, ry); }
+    K.ring(8.45, 0.5, [[1.12, 1.356], [1.786, 7.023]], '#d4a017', { bars: 0.33, h: 1.0 });
+    gate(K, -0.85, 0.5, 8.42, 0, 1.5, '#39d353'); gate(K, 0.85, 0.5, 8.42, 0, 1.5, '#ff3b30');
+    K.box(3.6, 0.25, 0.4, '#8a5a3c', 0, 0.125, 9.0); K.box(3.62, 0.03, 0.05, YEL, 0, 0.255, 9.18);
+    K.flush(this.B, this);
     this.rot = new THREE.Group(); this.g.add(this.rot);
     const RB = new Batcher(), rb = new Bulbs();
     RB.add(new THREE.CylinderGeometry(8.2, 8.2, 0.3, 40), pbr('wood', { tile: 1, color: '#c08a5c', roughness: 0.6 }), 0, 0.65, 0);
@@ -250,6 +433,23 @@ class BreakDance extends Ride {
     this.bulbs.line([-10.5, 11.35, -6.2], [10.5, 11.35, -6.2], 0.4, i => ['#3a86ff', '#ffbe0b', '#ff006e'][i % 3], 1, 3);
     for (const x of [-10.5, 10.5]) this.bulbs.line([x, 0.5, -6.1], [x, 11.2, -6.1], 0.4, '#ff4fd8', 1, 2.6);
     this.bulbs.circle(0, 0.55, 0, 11.1, 140, i => i % 2 ? '#ff006e' : '#ffbe0b', 1, 'xz', 2.6);
+    // --- Details: Rundgeländer mit Toren, Kulisse im Bogen hinter der Bahn (einseitig), Lautsprecher, Schildträger, Kabinen-Ausbau
+    const K = new Det(), PKB = '#ff4fd8', dg = Math.PI / 180;
+    K.ring(10.85, 0.5, [[-0.611, 0.942], [1.152, 1.431], [1.710, 3.752]], STEEL, { bars: 0.3 });
+    gate(K, 0, 0.5, 10.85, 0, 2.6, '#39d353'); gate(K, Math.cos(60 * dg) * 10.85, 0.5, Math.sin(60 * dg) * 10.85, Math.PI / 6, 1.9, '#ff3b30');
+    K.box(3.0, 0.25, 0.42, PLATE, 0, 0.125, 11.5); K.box(2.2, 0.25, 0.42, PLATE, Math.cos(60 * dg) * 11.5, 0.125, Math.sin(60 * dg) * 11.5, Math.PI / 6);
+    for (let i = 0; i < 6; i++) { const a = (215 + (i + 0.5) * 110 / 6) * dg; K.at(Math.cos(a) * 10.317, 0.5, Math.sin(a) * 10.317, faceIn(a)); this.bulbs.at(Math.cos(a) * 10.317, 0.5, Math.sin(a) * 10.317, faceIn(a));
+      backdrop(this, K, -1.665, 1.665, 0, 1, 0, 6.2, ['#3a0ca3', '#b5179e'], { pw: 3.4, i0: i, strut: 0.45, acc: '#ffbe0b', bulb: i % 2 ? '#ff006e' : '#3a86ff' }); }
+    K.at(null); this.bulbs.at(null);
+    for (const a of [211 * dg, 329 * dg]) speakers(K, Math.cos(a) * 10.25, 0.5, Math.sin(a) * 10.25, faceIn(a), 3);
+    for (const x of [-10.5, 10.5]) { footPad(K, x, -6.9, 0, 1.3); for (let y = 1.2; y < 11.3; y += 1.2) K.tube([x, y, -7.5], [x, y, -6.3], 0.04, '#d90429'); }
+    for (const x of [-5.8, 0, 5.8]) { K.box(0.12, 3.5, 0.12, '#d90429', x, 14.35, -7.02); K.bar([x, 15.4, -7.02], [x, 12.7, -7.5], 0.08, '#d90429'); }
+    // Bedienkabine: nur Dach, Sockel, Zierband, Tür, Fensterrahmen auf der Publikumsseite – die Blickseite (+z) bleibt frei
+    K.at(-9.5, 0, 9, Math.PI * 0.8);
+    K.box(3.1, 0.12, 2.7, DARK, 0, 0.06, 0); K.box(3.04, 0.14, 2.64, PKB, 0, 1.05, 0); K.box(3.4, 0.12, 3.05, PKB, 0, 2.86, -0.08); K.box(3.46, 0.05, 3.11, DARK, 0, 2.945, -0.08);
+    for (const sx of [-1, 1]) { K.box(0.12, 2.8, 0.12, PKB, sx * 1.5, 1.4, -1.3); K.box(0.07, 1.3, 0.07, DARK, sx * 1.22, 1.8, -1.34); K.box(0.3, 0.2, 0.12, '#fff4d6', sx * 0.9, 3.08, 1.3, 0, { em: 2.5 }); K.box(0.6, 0.45, 0.4, RUB, sx * 1.1, 3.2, -1.0); }
+    K.box(2.5, 0.07, 0.07, DARK, 0, 2.43, -1.34); K.box(2.5, 0.07, 0.07, DARK, 0, 1.17, -1.34); K.box(0.04, 2.0, 0.85, '#3a3d5c', 1.52, 1.1, -0.3); K.box(0.06, 0.05, 0.12, STEEL, 1.55, 1.1, -0.02); K.box(0.04, 1.6, 0.04, STEEL, -1.3, 3.75, -1.2);
+    K.at(null); K.flush(this.B, this);
     // Drehteile: Neigung (Hügel) -> Hauptkreuz -> 4 Teller -> 4 Wagen
     this.tilt = new THREE.Group(); this.tilt.position.y = 0.6; this.tilt.rotation.x = 0.1; this.g.add(this.tilt);
     this.main = new THREE.Group(); this.tilt.add(this.main);
@@ -299,6 +499,22 @@ class Swing extends Ride {
     const n = 24; this.n = n; this.RR = 5.6;
     this.B.add(new THREE.CylinderGeometry(7.6, 7.8, 0.4, 40), pbr('metal', { tile: 1.5, color: '#7fa7b5', metalness: 0.6 }), 0, 0.2, 0);
     this.B.add(new THREE.CylinderGeometry(0.75, 1.1, 14, 16), M('#e9c46a', { metalness: 0.4 }), 0, 7, 0);
+    // --- Details: Rundgeländer mit Toren, Schildportal, Mastfuß mit Knotenblechen, Bildtafeln, Zierringe, Leiter, Bedienkabine
+    const K = new Det(), PI = Math.PI, RD = '#e63946', ax = PI * 1.5 - 0.62;
+    K.ring(7.45, 0.4, [[-PI / 2 + 0.2, PI * 1.5 - 0.74], [PI * 1.5 - 0.5, PI * 1.5 - 0.2]], STEEL, { bars: 0.3 });
+    gate(K, 0, 0.4, -7.45, PI, 2.6, '#39d353'); gate(K, Math.cos(ax) * 7.45, 0.4, Math.sin(ax) * 7.45, Math.atan2(Math.cos(ax), Math.sin(ax)), 1.5, '#ff3b30');
+    K.box(3.0, 0.2, 0.4, PLATE, 0, 0.1, -8.0);
+    for (const s of [-1, 1]) { K.box(0.14, 4.25, 0.14, RD, s * 3.6, 2.5, -6.5); K.bar([s * 3.6, 4.5, -6.5], [s * 3.4, 4.5, -7.86], 0.1, RD); K.bar([s * 3.6, 3.5, -6.5], [s * 3.4, 3.5, -7.86], 0.1, RD); }
+    K.box(7.2, 0.1, 0.1, RD, 0, 4.5, -7.84); K.box(7.2, 0.1, 0.1, RD, 0, 3.5, -7.84);
+    K.cyl(1.55, 0.22, DARK, 0, 0.51, 0, 12, { cap: true });
+    for (let i = 0; i < 8; i++) { const a = i / 8 * PI * 2, b = a + PI / 8; K.box(0.08, 0.9, 0.6, '#e9c46a', Math.cos(a) * 1.3, 0.95, Math.sin(a) * 1.3, -a + PI / 2);
+      K.box(0.78, 1.9, 0.04, i % 2 ? '#f6d365' : '#a1c4fd', Math.cos(b) * 1.1, 2.35, Math.sin(b) * 1.1, -b + PI / 2, { em: 0.6 }); }
+    for (const y of [3.6, 7, 10.4]) K.cyl(1.15 - 0.025 * y, 0.28, RD, 0, y, 0, 12);
+    for (const s of [-1, 1]) K.bar([s * 0.2, 3.8, 1.07], [s * 0.2, 12.6, 0.85], 0.04, STEEL);
+    for (let y = 4; y < 12.6; y += 0.45) K.box(0.4, 0.03, 0.03, STEEL, 0, y, 1.07 - (y - 3.8) * 0.025);
+    for (let i = 0; i < 4; i++) { const a = PI / 4 + i * PI / 2; K.dots([Math.cos(a) * 1.1, 3.9, Math.sin(a) * 1.1], [Math.cos(a) * 0.87, 12.6, Math.sin(a) * 0.87], 0.5, '#ffd166', 2.4, 0.12); }
+    { const a = Math.atan2(4.3, 3.9); opCabin(K, 3.9, 0.4, 4.3, faceIn(a), '#1d3557', '#ffd166'); speakers(K, 1.9, 0.4, 5.9, faceIn(Math.atan2(5.9, 1.9)), 2); cable(K, [2.9, 3.2], [1.1, 1.2], 0.44); }
+    K.flush(this.B, this);
     this.top = new THREE.Group(); this.top.position.y = 13.5; this.g.add(this.top);
     const TB = new Batcher(), tb = new Bulbs();
     TB.add(new THREE.ConeGeometry(6.4, 2.6, 32, 1, true), M('#e63946', { side: THREE.DoubleSide }), 0, 1.0, 0);
@@ -344,6 +560,18 @@ class FreeFall extends Ride {
     this.B.add(new THREE.CylinderGeometry(4.6, 4.8, 0.5, 24), pbr('metal', { tile: 1.5, color: '#8a8ea8', metalness: 0.6 }), 0, 0.25, 0);
     this.B.add(new THREE.CylinderGeometry(2.2, 1.6, 3, 12), M('#ef233c'), 0, H + 1.5, 0);
     this.B.add(new THREE.ConeGeometry(1.5, 4, 12), M('#ffd166', { metalness: 0.6 }), 0, H + 5, 0);
+    // --- Details: Rundgeländer mit Toren und Stufen, Turmschüsse mit Flanschen, Führungsschienen, Bremsschwerter, Wartungsbühne, Warnleuchte
+    const K = new Det(), PI = Math.PI, RD = '#ef233c';
+    K.ring(4.68, 0.5, [[-PI / 2 - 0.53, -PI / 2 + 0.53], [-PI / 2 + 0.87, PI * 1.5 - 0.87]], STEEL, { bars: 0.3 });
+    for (const [da, c] of [[-0.7, '#39d353'], [0.7, '#ff3b30']]) { const a = -PI / 2 + da, ry = Math.atan2(Math.cos(a), Math.sin(a)); gate(K, Math.cos(a) * 4.68, 0.5, Math.sin(a) * 4.68, ry, 1.4, c);
+      K.at(Math.cos(a) * 4.8, 0, Math.sin(a) * 4.8, ry).box(1.5, 0.25, 0.38, PLATE, 0, 0.125, 0.2); K.at(null); }
+    for (let y = 6; y < H; y += 6) K.box(2.56, 0.16, 2.56, '#8d99ae', 0, y, 0);
+    for (const s of [-1, 1]) for (const t of [-1, 1]) { K.box(0.1, H - 1, 0.07, STEEL, s * 0.6, H / 2 + 0.5, t * 1.235); K.box(0.07, H - 1, 0.1, STEEL, t * 1.235, H / 2 + 0.5, s * 0.6); }
+    for (let y = 7; y < 15.5; y += 0.8) for (const t of [-1, 1]) { K.box(0.5, 0.05, 0.12, '#b87333', 0, y, t * 1.26); K.box(0.12, 0.05, 0.5, '#b87333', t * 1.26, y, 0); }
+    K.cyl(2.5, 0.08, PLATE, 0, H - 1.2, 0, 10, { cap: true }); K.ring(2.4, H - 1.16, [[0, PI * 2]], STEEL, { h: 1.0, mid: 1 });
+    for (const s of [-1, 1]) for (const t of [-1, 1]) K.bar([s * 1.2, H - 2.8, t * 1.2], [s * 1.7, H - 1.24, t * 1.7], 0.1, STEEL);
+    K.box(0.3, 0.3, 0.3, '#ff2a2a', 0, H + 7.1, 0, 0, { em: 4 });
+    K.flush(this.B, this);
     for (const [x, z] of [[1.25, 1.25], [-1.25, 1.25], [1.25, -1.25], [-1.25, -1.25]]) this.bulbs.line([x, 2, z], [x, H, z], 0.7, i => i % 4 === 0 ? '#ffffff' : '#ef233c', 1, 3);
     this.bulbs.circle(0, H + 3.1, 0, 2.3, 30, '#ffd166', 3, 'xz', 3);
     this.ring = new THREE.Group(); this.g.add(this.ring);
@@ -375,6 +603,20 @@ class Pendulum extends Ride {
       this.bulbs.line([-7.5, 0.5, z], [0, PIV, z * 0.55], 0.6, '#4cc9f0', 1, 3); this.bulbs.line([7.5, 0.5, z], [0, PIV, z * 0.55], 0.6, '#f72585', 1, 3); }
     this.B.add(new THREE.CylinderGeometry(6.5, 6.8, 0.5, 32), pbr('metal', { tile: 1.5, color: '#7b7b9a', metalness: 0.6 }), 0, 0.25, 0);
     this.B.add(new THREE.CylinderGeometry(0.8, 0.8, 4.2, 12), M('#adb5bd', { metalness: 0.8 }), 0, PIV, 0, Math.PI / 2);
+    // --- Details: Rundgeländer mit Toren, Schildpfosten, Unterpallung, Querriegel, Abstrebungen, Lagergehäuse/Antrieb, Bedienkabine, Aggregat, Zaun
+    const K = new Det(), PI = Math.PI, BL = '#3a0ca3';
+    K.ring(6.4, 0.5, [[-PI / 2 - 0.39, -PI / 2 + 0.39], [-PI / 2 + 0.65, PI * 1.5 - 0.65]], STEEL, { bars: 0.3 });
+    for (const [da, c] of [[-0.52, '#39d353'], [0.52, '#ff3b30']]) { const a = -PI / 2 + da, ry = Math.atan2(Math.cos(a), Math.sin(a)); gate(K, Math.cos(a) * 6.4, 0.5, Math.sin(a) * 6.4, ry, 1.45, c);
+      K.at(Math.cos(a) * 6.8, 0, Math.sin(a) * 6.8, ry).box(1.6, 0.25, 0.4, PLATE, 0, 0.125, 0.2); K.at(null); }
+    for (const s of [-1, 1]) { K.box(0.12, 3.5, 0.12, BL, s * 1.9, 1.75, -6.74);
+      K.bar([s * 7.5, 0.5, -3.6], [s * 7.5, 0.5, 3.6], 0.3, BL);
+      for (const t of [-1, 1]) { footPad(K, s * 7.5, t * 3.6, 0, 1.2); K.tube([s * 6.375, 2.55, t * 3.357], [s * 6.4, 0.2, t * 5.4], 0.12, BL, 6); footPad(K, s * 6.4, t * 5.4, 0, 0.8); }
+      K.box(1.3, 1.3, 0.7, '#ffd60a', 0, PIV, s * 2.45); K.cyl(0.45, 0.9, DARK, 0, PIV, s * 3.2, 8, { rx: PI / 2, cap: true });
+      K.rail([[s * 8.95, 0, -5.95], [s * 8.95, 0, 5.95]], STEEL, { mid: 2, post: 2.2 }); K.rail([[s * 3.6, 0, 5.95], [s * 8.95, 0, 5.95]], STEEL, { mid: 2, post: 2.2 }); }
+    K.rail([[-8.95, 0, -5.95], [-4.6, 0, -5.95]], STEEL, { bars: 0.3 }); K.rail([[4.6, 0, -5.95], [6.4, 0, -5.95]], STEEL, { bars: 0.3 });
+    opCabin(K, 0, 0.5, 5.35, PI, BL, '#f72585', 2.4, 1.5);
+    genset(K, 7.9, 0, 5.2, 0); cable(K, [6.8, 5.2], [3.0, 5.6]);
+    K.flush(this.B, this);
     this.arm = new THREE.Group(); this.arm.position.y = PIV; this.g.add(this.arm);
     const AB = new Batcher(); AB.add(new THREE.BoxGeometry(0.9, 14, 0.9), M('#f72585', { metalness: 0.4 }), 0, -7, 0); AB.add(new THREE.CylinderGeometry(1.6, 1.6, 1.4, 16), M('#ffd60a'), 0, 1.2, 0);
     const ab = new Bulbs(); ab.line([0.5, 0, 0.5], [0.5, -13.5, 0.5], 0.5, '#ffd60a', 1, 3); ab.line([-0.5, 0, -0.5], [-0.5, -13.5, -0.5], 0.5, '#4cc9f0', 1, 3); AB.build(this.arm); ab.build(this.arm);
@@ -421,6 +663,48 @@ class Coaster extends Ride {
     for (const z of [3, 17]) for (const x of [-16, -9]) this.B.add(new THREE.CylinderGeometry(0.12, 0.12, 4.6, 6), M('#555'), x, 2.3, z);
     this.bulbs.line([-16, 4.4, 2], [-16, 4.4, 18], 0.4, '#ffd60a', 1, 3); this.bulbs.line([-9, 4.4, 2], [-9, 4.4, 18], 0.4, '#ffd60a', 1, 3);
     this.sign('ALPINA BAHN', 14, 2.6, -16.1, 7, 10, -Math.PI / 2, { fg: '#ffffff', border: '#f77f00', bg: '#003049' });
+    // --- Details: Fundamente + Abstrebung der Stützen, Laufsteg mit Geländer am Lift, Bahnhof (Satteldach, Holzwand, Treppen, Tore, Kabine), Zaun, Packwagen
+    const K = new Det(), OR = '#f77f00', HP = Math.PI / 2;
+    // frei = kein Gleis (außer dem eigenen Abschnitt) näher als ca. 1,6 m -> nur dort darf eine Strebe stehen
+    const free = (x, y, z, own) => { for (let j = 0; j < N; j++) { const dj = Math.abs(j - own); if (dj < 7 || dj > N - 7) continue; const p = samples[j].p; if ((p.x - x) ** 2 + (p.y + 0.4 - y) ** 2 + (p.z - z) ** 2 < 2.6) return false; } return true; };
+    for (let i = 0; i < N; i += 8) { const p = samples[i].p, t = samples[i].t; if (p.y <= 1.8) continue; const h = p.y - 0.4;
+      K.box(0.8, 0.22, 0.8, CONC, p.x, 0.11, p.z); K.box(0.5, 0.06, 0.5, DARK, p.x, 0.25, p.z);
+      if (h < 5) continue; const hl = Math.hypot(t.x, t.z) || 1, qx = -t.z / hl, qz = t.x / hl, off = Math.min(3, 0.9 + h * 0.14), top = h * 0.72;
+      for (const sd of [-1, 1]) { const gx = p.x + qx * off * sd, gz = p.z + qz * off * sd; let ok = Math.abs(gx) < 15.4 && Math.abs(gz) < 25.4;
+        for (let q = 0; q <= 6 && ok; q++) ok = free(lerp(gx, p.x, q / 6), lerp(0.2, top, q / 6), lerp(gz, p.z, q / 6), i);
+        if (!ok) continue; K.tube([gx, 0.2, gz], [p.x, top, p.z], 0.09, OR); K.box(0.6, 0.2, 0.6, CONC, gx, 0.1, gz);
+        if (h > 9) K.tube([lerp(gx, p.x, 0.5), top * 0.5 + 0.1, lerp(gz, p.z, 0.5)], [p.x, top * 0.5 + 0.1, p.z], 0.05, OR); } }
+    // Lift: Laufsteg (Riffelblech) auf der Westseite, Geländer, Konsolen, Kette
+    { const iA = Math.round(this.sLiftA / this.len * N), iB = Math.round(this.sLiftB / this.len * N); let pv = null;
+      for (let i = iA; i <= iB; i++) { const p = samples[i].p, r = new THREE.Vector3().crossVectors(samples[i].t, UP).normalize();
+        const c = [p.x - r.x * 1.3, p.y - 0.42, p.z - r.z * 1.3], e = [p.x - r.x * 1.68, p.y - 0.42, p.z - r.z * 1.68], m = [p.x, p.y - 0.2, p.z];
+        if (pv) { K.bar(pv.c, c, 0.72, PLATE, { d: 0.05, k: 't' }); K.bar([pv.e[0], pv.e[1] + 1.05, pv.e[2]], [e[0], e[1] + 1.05, e[2]], 0.06, STEEL); K.bar([pv.e[0], pv.e[1] + 0.55, pv.e[2]], [e[0], e[1] + 0.55, e[2]], 0.04, STEEL); K.bar(pv.m, m, 0.1, DARK); }
+        if ((i - iA) % 2 === 0) K.box(0.06, 1.05, 0.06, STEEL, e[0], e[1] + 0.525, e[2]);
+        if ((i - iA) % 4 === 0) K.bar([p.x, p.y - 0.5, p.z], [e[0], e[1] - 0.05, e[2]], 0.08, OR);
+        pv = { c, e, m }; } }
+    genset(K, -14.3, 0, -1.3, HP, '#454a54');
+    // Bahnhof: Riffelblech, Sicherheitslinie, Zwischenstützen, Satteldach, Schildträger
+    K.box(5.04, 0.04, 14.04, PLATE, -14.5, 1.42, 10, 0, { k: 't' }); K.box(0.12, 0.02, 14, YEL, -12.25, 1.45, 10);
+    for (const z of [7.67, 12.33]) for (const x of [-16, -9]) K.box(0.16, 4.6, 0.16, '#555555', x, 2.3, z);
+    K.box(3.85, 0.08, 16.6, '#7a2e1a', -14.3, 5.24, 10, 0, { rz: 0.25 }); K.box(3.85, 0.08, 16.6, '#7a2e1a', -10.7, 5.24, 10, 0, { rz: -0.25 }); K.box(0.22, 0.12, 16.7, DARK, -12.5, 5.74, 10);
+    for (const x of [-16.14, -8.86]) K.box(0.08, 0.26, 16.6, OR, x, 4.72, 10);
+    for (const z of [1.75, 18.25]) for (const s of [-1, 1]) K.bar([-12.5 + s * 3.6, 4.8, z], [-12.5, 5.7, z], 0.14, OR);
+    for (const z of [4, 10, 16]) { K.box(0.12, 3.7, 0.12, DARK, -15.95, 6.55, z); K.bar([-15.95, 8.0, z], [-14.3, 5.35, z], 0.08, DARK); }
+    // Rückwand (Holz) mit Fenstern, Läden und Blumenkästen (Alpen-Deko wie die Bergkulisse)
+    K.box(0.08, 4.4, 14, '#c9a070', -8.98, 2.2, 10, 0, { k: 'w' });
+    for (const z of [5, 8.35, 11.65, 15]) { K.box(0.04, 1.1, 1.5, '#ffd9a0', -9.06, 2.7, z, 0, { em: 0.9 }); K.box(0.06, 1.1, 0.06, TIMB, -9.09, 2.7, z); K.box(0.06, 0.06, 1.5, TIMB, -9.09, 2.7, z);
+      for (const s of [-1, 1]) K.box(0.05, 1.14, 0.4, '#2f6b3a', -9.07, 2.7, z + s * 0.97); K.box(0.2, 0.18, 1.6, TIMB, -9.14, 2.06, z); K.box(0.16, 0.12, 1.5, '#d62828', -9.14, 2.2, z); }
+    // Bahnsteig: Geländer, Zugang (Süd) und Ausgang (Nord) über Treppen an den Stirnseiten -> nichts ragt in die Allee
+    K.rail([[-16.92, 1.4, 3.05], [-16.92, 1.4, 16.95]], OR, { bars: 0.3 }); K.rail([[-13.0, 1.4, 3.6], [-13.0, 1.4, 16.4]], STEEL, { h: 0.9, post: 2.3 });
+    for (const z of [3.05, 16.95]) { K.rail([[-15.05, 1.4, z], [-13.4, 1.4, z]], OR, { bars: 0.3 }); K.rail([[-16.92, 1.4, z], [-16.75, 1.4, z]], OR); }
+    K.at(-15.9, 0, 3, Math.PI).stairs(1.6, 1.4, 5, 0.32, PLATE, { k: 't' }); K.at(-15.9, 0, 17, 0).stairs(1.6, 1.4, 5, 0.32, PLATE, { k: 't' }); K.at(null);
+    gate(K, -15.9, 1.4, 3.12, Math.PI, 1.5, '#39d353'); gate(K, -15.9, 1.4, 16.88, 0, 1.5, '#ff3b30');
+    opCabin(K, -16.0, 1.4, 10, HP, '#003049', OR, 2.0, 1.3);
+    // Zaun ums Gelände (vorne zur Allee als Absperrgitter), Packwagen in der Südwest-Ecke
+    K.rail([[-15.9, 0, -25.9], [15.9, 0, -25.9], [15.9, 0, 25.9], [-15.9, 0, 25.9]], STEEL, { mid: 2, post: 2.6 });
+    K.rail([[-15.9, 0, 25.9], [-15.9, 0, 19.4]], STEEL, { bars: 0.33, post: 2.2 }); K.rail([[-15.9, 0, 0.9], [-15.9, 0, -25.9]], STEEL, { bars: 0.33, post: 2.2 });
+    trailer(K, -14.6, 23, -HP, 5.2, '#e9e9ec', OR);
+    K.flush(this.B, this);
     // Bergkulisse (die Alpina Bahn hat eine Alpen-Deko)
     const mtn = new THREE.ConeGeometry(7, 14, 5); this.B.add(mtn, M('#6c757d', { flatShading: true }), 2, 7, 0, 0, 0.3); this.B.add(new THREE.ConeGeometry(3.2, 5, 5), M('#f8f9fa', { flatShading: true }), 2, 12.6, 0, 0, 0.3);
     this.B.add(new THREE.ConeGeometry(5, 10, 5), M('#5c677d', { flatShading: true }), 9, 5, -14, 0, 1); this.B.add(new THREE.ConeGeometry(2.2, 3.5, 5), M('#f8f9fa', { flatShading: true }), 9, 9, -14, 0, 1);
@@ -476,6 +760,24 @@ class Scooter extends Ride {
     for (let x = -W / 2; x <= W / 2; x += 1.5) for (let z = -D / 2; z <= D / 2; z += 1.5) this.bulbs.add(x, 5.3, z, pick(['#ffffff', '#4cc9f0', '#ff4d6d', '#ffd166']), rand() * 5, 3, 2.4);
     this.bulbs.line([-W / 2 - 1, 5.9, D / 2 + 1.05], [W / 2 + 1, 5.9, D / 2 + 1.05], 0.35, i => i % 2 ? '#4cc9f0' : '#ffffff', 1, 3);
     this.sign('AUTOSCOOTER DIAMOND', 14, 1.6, 0, 7, D / 2 + 1.1, 0, { fg: '#4cc9f0', border: '#ffffff', bg: '#0b132b' });
+    // --- Details: Rückwand-Kulisse (einseitig), Säulenfüße/-köpfe, Leuchtblende, Schildträger, Dach-Diamanten, Umlauf-Riffelblech, Geländer mit Toren, Lautsprecher
+    const K = new Det(), CY = '#4cc9f0', NV = '#1d3557', HP = Math.PI / 2, zb = -D / 2 - 0.72;
+    backdrop(this, K, -W / 2 - 0.4, W / 2 + 0.4, zb, 1, 0.9, 4.45, [NV, '#274c77'], { pw: 2.85, acc: CY, bulb: false });
+    for (const s of [-1, 1]) { K.panel(3, 4.45, '#274c77', s * (W / 2 + 0.72), 3.125, -D / 2 + 0.6, -s * HP); K.box(0.14, 4.45, 0.14, STEEL, s * (W / 2 + 0.72), 3.125, -D / 2 + 2.1);
+      for (const z of [-D / 2 - 0.6, D / 2 + 0.6]) K.cyl(0.16, 5.2, '#adb5bd', s * 5.8, 2.6, z, 8);
+      this.bulbs.line([s * (W / 2 + 1.05), 5.9, -D / 2 - 1], [s * (W / 2 + 1.05), 5.9, D / 2 + 1], 0.35, i => i % 2 ? CY : '#ffffff', 1, 3);
+      for (const t of [-1, 1]) { K.box(0.06, 0.14, D + 2.1, t > 0 ? CY : '#ffffff', s * (W / 2 + 1.03), 5.6 + t * 0.18, 0, 0, { em: t > 0 ? 1 : 0.6 }); K.box(W + 2.1, 0.14, 0.06, s > 0 ? CY : '#ffffff', 0, 5.6 + s * 0.18, t * (D / 2 + 1.03), 0, { em: s > 0 ? 1 : 0.6 });
+        K.box(0.9, 0.9, 0.9, CY, s * (W / 2 + 0.2), 6.75, t * (D / 2 + 0.2), 0, { rx: Math.PI / 4, rz: 0.6155, em: 1.4 }); K.box(0.1, 0.5, 0.1, DARK, s * (W / 2 + 0.2), 6.05, t * (D / 2 + 0.2));
+        if (t > 0) speakers(K, s * (W / 2 + 0.6), 4.0, D / 2 + 0.05, Math.atan2(-s, -1), 1); }
+      K.rail([[s * (W / 2 + 0.92), 0.35, -D / 2 - 0.9], [s * (W / 2 + 0.92), 0.35, D / 2 + 0.92]], STEEL, { bars: 0.3 });
+      K.box(0.5, 0.03, D + 2, PLATE, s * (W / 2 + 0.75), 0.365, 0, 0, { k: 't' }); K.box(W + 1, 0.03, 0.5, PLATE, 0, 0.365, s * (D / 2 + 0.75), 0, { k: 't' });
+      K.box(0.06, 0.14, D, RUB, s * (W / 2 + 0.08), 0.52, 0); K.box(W, 0.14, 0.06, RUB, 0, 0.52, s * (D / 2 + 0.08)); }
+    for (const x of [-W / 2 - 0.6, -5.8, 0, 5.8, W / 2 + 0.6]) for (const z of [-D / 2 - 0.6, D / 2 + 0.6]) { K.box(0.5, 0.5, 0.5, NV, x, 0.6, z); K.box(0.46, 0.3, 0.46, NV, x, 5.2, z); }
+    for (const x of [-6, -2, 2, 6]) { K.box(0.12, 2.0, 0.12, DARK, x, 6.85, D / 2 + 0.98); K.bar([x, 7.6, D / 2 + 0.98], [x, 5.9, D / 2 - 0.5], 0.08, DARK); }
+    for (const [x0, x1] of [[-W / 2 - 0.92, -7], [-4.4, 5.4], [7.6, W / 2 + 0.92]]) K.rail([[x0, 0.35, D / 2 + 0.92], [x1, 0.35, D / 2 + 0.92]], STEEL, { bars: 0.3 });
+    gate(K, -5.7, 0.35, D / 2 + 0.92, 0, 2.4, '#39d353'); gate(K, 6.5, 0.35, D / 2 + 0.92, 0, 2.0, '#ff3b30');
+    K.box(2.0, 0.8, 1.2, STEEL, -6, 6.25, -3); K.box(1.8, 0.05, 1.0, DARK, -6, 6.67, -3); K.box(0.3, 0.2, 6, STEEL, -6, 5.95, 0.6);
+    K.flush(this.B, this);
     this.cars = []; const cols = ['#e63946', '#ffbe0b', '#3a86ff', '#8338ec', '#06d6a0', '#ff006e', '#fb5607', '#ffffff', '#00b4d8', '#9ef01a'];
     for (let i = 0; i < 10; i++) { const c = makeBumper(cols[i]); c.position.set(R(-W / 2 + 2, W / 2 - 2), 0.4, R(-D / 2 + 2, D / 2 - 2)); this.g.add(c); const seat = new THREE.Object3D(); seat.position.set(0, 0.25, 0.15); c.add(seat);
       this.cars.push({ m: c, x: c.position.x, z: c.position.z, a: R(0, 6.28), v: R(1.5, 3), vx: 0, vz: 0, seat, ai: true, turn: 0 }); this.seats.push(seat); }
@@ -548,6 +850,18 @@ class Ghost extends Ride {
     this.B.add(new THREE.ConeGeometry(2.2, 5, 16, 1, true), ghostMat, 0, H + 2.6, 1); this.B.add(new THREE.SphereGeometry(1.6, 16, 10), ghostMat, 0, H + 5, 1);
     this.B.add(new THREE.SphereGeometry(0.3, 8, 6), Glow('#ff0000', 4), -0.55, H + 5.2, -0.4); this.B.add(new THREE.SphereGeometry(0.3, 8, 6), Glow('#ff0000', 4), 0.55, H + 5.2, -0.4);
     this.bulbs.line([-W / 2, H + 0.2, -D / 2 - 0.3], [W / 2, H + 0.2, -D / 2 - 0.3], 0.4, '#7CFC00', 3, 3); this.bulbs.line([-W / 2, 0.3, -D / 2 - 0.3], [W / 2, 0.3, -D / 2 - 0.3], 0.4, '#9d4edd', 1, 3);
+    // --- Details (flaches Relief, damit nichts über die Grundfläche ragt): Tunnelmäuler mit Portalen, Eckpfeiler, Gesims, Zinnen, Ecktürme, Strebepfeiler, Leuchtfenster, Dachgeräte
+    const K = new Det(), ST = '#4a3a5c', ST2 = '#372a47', OG = '#ff9f1c', zf = -D / 2 - 0.3;
+    for (const x of [-4.5, 4.5]) { K.box(3.0, 3.0, 0.04, '#050308', x, 1.5, -D / 2 - 0.2); for (const s of [-1, 1]) K.box(0.4, 3.4, 0.3, ST, x + s * 1.7, 1.7, zf); K.box(4.2, 0.45, 0.34, ST, x, 3.45, zf); K.box(0.9, 0.75, 0.32, ST2, x, 3.95, zf); K.box(2.8, 0.1, 0.03, '#7CFC00', x, 3.14, zf - 0.16, 0, { em: 2 }); }
+    for (const s of [-1, 1]) { K.box(0.7, H, 0.3, ST, s * (W / 2 - 0.2), H / 2, zf);
+      K.cyl(1.2, 3.4, ST, s * 8.6, H + 1.85, -4.6, 8, { cap: true, ry: Math.PI / 8 }); K.cyl(1.5, 2.4, '#1b0033', s * 8.6, H + 4.75, -4.6, 8, { r2: 0, cap: true, ry: Math.PI / 8 }); K.box(0.4, 0.9, 0.05, OG, s * 8.6, H + 2.2, -5.73, 0, { em: 1.6 });
+      for (const z of [-4, 0, 4]) K.box(0.5, 6.5, 0.8, ST, s * (W / 2 + 0.4), 3.25, z);
+      for (const z of [-2, 2]) { K.box(0.05, 1.8, 0.9, OG, s * (W / 2 + 0.18), 4.2, z, 0, { em: 1.1 }); K.box(0.07, 1.8, 0.08, '#120018', s * (W / 2 + 0.2), 4.2, z); K.box(0.07, 0.08, 0.9, '#120018', s * (W / 2 + 0.2), 4.5, z); K.box(0.1, 0.12, 1.1, ST, s * (W / 2 + 0.2), 3.24, z); }
+      K.box(1.6, 0.9, 1.0, STEEL, s * 5, H + 0.6, 4.4); K.box(1.4, 0.05, 0.8, DARK, s * 5, H + 1.07, 4.4); }
+    K.box(W + 0.6, 0.4, 0.36, ST, 0, H - 0.15, zf); K.box(W + 0.4, 0.2, 0.1, ST, 0, 0.1, -D / 2 - 0.22);
+    for (let i = 0; i < 13; i++) K.box(0.8, 0.9, 0.5, i % 2 ? ST2 : ST, -9.6 + i * 1.6, H + 0.6, -D / 2 + 0.3);
+    for (const x of [-7, 0, 7]) K.box(0.8, 6.5, 0.3, ST, x, 3.25, D / 2 + 0.3);
+    K.flush(this.B, this);
     // Strecke
     const P = [[-8, 0, -8.5], [-4.5, 0, -8.5], [-4.5, 0, -4], [-7.5, 0, -1], [-7.5, 0, 3], [-3, 0, 4], [0, 0, 0], [3, 0, 4], [7.5, 0, 3], [7.5, 0, -1], [4.5, 0, -4], [4.5, 0, -8.5], [0, 0, -9.5]];
     this.curve = new THREE.CatmullRomCurve3(P.map(p => new THREE.Vector3(...p)), true); this.len = this.curve.getLength();
@@ -589,6 +903,21 @@ class VR extends Ride {
     this.B.add(new THREE.SphereGeometry(4, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), M('#240046', { metalness: 0.6, roughness: 0.3 }), 0, 5, 0);
     this.sign('CINÉMA 5D', 7, 1.6, 0, 3.6, 4.05, 0, { fg: '#00f5d4', border: '#f15bb5', bg: '#10002b' });
     this.bulbs.circle(0, 5.05, 0, 4.05, 60, i => i % 2 ? '#00f5d4' : '#f15bb5', 1, 'xz', 3);
+    // --- Details: Neon-Ecken, Eingang mit Vordach, Leuchtplakate, Paneel-Fugen, Kuppelrippen, Klimagerät, Aggregat
+    const K = new Det(), CY = '#00f5d4', PK = '#f15bb5', VI = '#240046';
+    K.box(9.2, 0.25, 8.2, DARK, 0, 0.125, 0);
+    for (const sx of [-1, 1]) { for (const sz of [-1, 1]) { K.box(0.3, 5, 0.3, VI, sx * 4.45, 2.5, sz * 3.95); K.box(0.06, 4.5, 0.06, sx * sz > 0 ? CY : PK, sx * 4.62, 2.55, sz * 4.12, 0, { em: 1.8 }); }
+      for (const z of [-2.67, -1.33, 0, 1.33, 2.67]) K.box(0.05, 4.6, 0.06, '#3c1a6e', sx * 4.52, 2.5, z); K.box(0.04, 0.08, 7.6, PK, sx * 4.53, 4.6, 0, 0, { em: 1.6 });
+      K.box(0.12, 2.4, 0.12, CY, -2.4 + sx * 0.9, 1.2, 4.06, 0, { em: 1.2 }); }
+    K.box(1.7, 2.3, 0.05, '#050308', -2.4, 1.15, 4.03); K.box(1.92, 0.12, 0.12, CY, -2.4, 2.4, 4.06, 0, { em: 1.2 }); K.box(2.6, 0.1, 0.55, VI, -2.4, 2.62, 4.3); K.box(2.6, 0.06, 0.04, PK, -2.4, 2.6, 4.58, 0, { em: 2 });
+    K.box(2.0, 0.15, 0.4, PLATE, -2.4, 0.075, 4.25);
+    for (const [x, c] of [[-0.35, '#7b2cbf'], [1.2, '#3a86ff']]) { K.box(1.3, 1.9, 0.06, DARK, x, 1.45, 4.03); K.box(1.14, 1.74, 0.03, c, x, 1.45, 4.07, 0, { em: 0.9 }); K.box(0.7, 0.7, 0.02, PK, x, 1.6, 4.09, 0, { rz: Math.PI / 4, em: 1.4 }); }
+    for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4 + Math.PI / 8; for (let j = 0; j < 5; j++) { const f0 = j * Math.PI / 10, f1 = (j + 1) * Math.PI / 10;
+      K.tube([Math.cos(a) * Math.cos(f0) * 4.04, 5 + Math.sin(f0) * 4.04, Math.sin(a) * Math.cos(f0) * 4.04], [Math.cos(a) * Math.cos(f1) * 4.04, 5 + Math.sin(f1) * 4.04, Math.sin(a) * Math.cos(f1) * 4.04], 0.05, k % 2 ? CY : PK, 4, { em: 0.9 }); } }
+    K.cyl(0.1, 1.2, STEEL, 0, 9.6, 0, 6); K.box(0.3, 0.3, 0.3, PK, 0, 10.3, 0, 0, { em: 3 });
+    K.box(0.4, 0.7, 1.0, STEEL, -4.72, 3.2, -1.5); K.box(0.03, 0.5, 0.8, DARK, -4.93, 3.2, -1.5);
+    genset(K, 1.5, 0, -4.6, Math.PI); cable(K, [0.2, -4.6], [-1.6, -4.15]);
+    K.flush(this.B, this);
     const s = new THREE.Object3D(); s.position.set(0, 0.5, 0); this.g.add(s); this.seats.push(s);
     this.booth(3, 5.3, 0, '#00f5d4');
     G.fairBox(cfg.u, cfg.v, 4.5, 4, 0, 'vr'); this.G.glow.paint(cfg.u, cfg.v + 5, '#00f5d4', 8, 0.6);
@@ -606,6 +935,7 @@ class Generic extends Ride {
     const col = pick(['#ff006e', '#3a86ff', '#ffbe0b', '#8338ec', '#06d6a0', '#fb5607', '#00f5d4']); const col2 = pick(['#ffffff', '#ffd166', '#4cc9f0']);
     this.col = col; const big = !cfg.small; const front = cfg.v > 0 ? -1 : 1; // Front zur Mittelallee
     this.front = front;
+    const K = new Det(), PI = Math.PI;   // Detail-Sammler (siehe Baukasten oben)
     if (this.style === 'spinner' || this.style === 'tagada' || this.style === 'drum') {
       const r = big ? 6.5 : 4.6; this.r = r;
       this.B.add(new THREE.CylinderGeometry(r + 0.4, r + 0.6, 0.5, 32), pbr('metal', { tile: 1.5, color: '#8f8fb0', metalness: 0.6 }), 0, 0.25, 0);
@@ -625,6 +955,20 @@ class Generic extends Ride {
       G.fairCircle(cfg.u, cfg.v, r + 0.5, 'ride');
       this.sign(cfg.name.toUpperCase(), Math.min(10, r * 1.6), 1.3, 0, 5.8, front * (r + 0.7), front > 0 ? 0 : Math.PI, { fg: col2, border: col });
       for (const x of [-r * 0.8, r * 0.8]) this.B.add(new THREE.CylinderGeometry(0.1, 0.1, 6.4, 6), M('#888', { metalness: 0.8 }), x, 3.2, front * (r + 0.6));
+      // --- Details: Rundgeländer mit Toren, Stufe, Kulisse im Bogen (einseitig) mit Bedienfenster, Lautsprecher, Schild-Fachwerk
+      { const fa = front * PI / 2, rr = r + 0.35, e = front * 0.62, HB = this.style === 'drum' ? 6 : this.style === 'spinner' ? 5.4 : 5, rm = r + 0.45, hw = rm * Math.tan(PI / 12), zs = front * (r + 0.6), xs = r * 0.8;
+        const parts = e > 0 ? [[-1.833, -0.2], [0.2, e - 0.13], [e + 0.13, 1.833]] : [[-1.833, e - 0.13], [e + 0.13, -0.2], [0.2, 1.833]];
+        K.ring(rr, 0.5, parts.map(([a, b]) => [fa + a, fa + b]), STEEL, { bars: 0.3 });
+        if (this.style !== 'drum') { const ax = fa + e; gate(K, 0, 0.5, front * rr, front > 0 ? 0 : PI, 2.4, '#39d353'); gate(K, Math.cos(ax) * rr, 0.5, Math.sin(ax) * rr, Math.atan2(Math.cos(ax), Math.sin(ax)), 1.5, '#ff3b30'); }
+        K.box(2.6, 0.25, 0.4, PLATE, 0, 0.125, front * (r + 0.82));
+        for (let i = 0; i < 5; i++) { const a = -fa - 1.309 + (i + 0.5) * 0.5236, cx = Math.cos(a) * rm, cz = Math.sin(a) * rm; K.at(cx, 0.3, cz, faceIn(a)); this.bulbs.at(cx, 0.3, cz, faceIn(a));
+          backdrop(this, K, -hw, hw, 0, 1, 0, HB + 0.2, [col, '#1b1b2f'], { pw: 4, i0: i, acc: col2, bulb: col2, lamp: i !== 2 });
+          if (i === 2) { K.panel(2.7, 1.5, DARK, 0, 2.5, 0.05); K.panel(2.3, 1.0, GLASS, 0, 2.5, 0.07, 0, { em: 0.6 }); K.panel(0.06, 1.0, DARK, 0, 2.5, 0.08); K.panel(2.7, 0.14, col2, 0, 3.32, 0.08, 0, { em: 0.5 });
+            for (const t of [-1, 1]) K.panel(0.12, 0.12, t > 0 ? '#39ff14' : '#ff3b30', t * 0.5, 1.88, 0.08, 0, { em: 2.5 }); } }
+        K.at(null); this.bulbs.at(null);
+        for (const t of [-1, 1]) { const a = -fa + t * 1.19; speakers(K, Math.cos(a) * (rm - 0.32), HB - 1.0, Math.sin(a) * (rm - 0.32), faceIn(a), 1);
+          footPad(K, t * xs, zs, 0, 0.7); K.bar([-xs, 5.8 + t * 0.7, zs], [xs, 5.8 + t * 0.7, zs], 0.07, '#888888'); }
+        for (let k = 0; k < 8; k++) K.bar([-xs + k * xs / 4, k % 2 ? 6.5 : 5.1, zs], [-xs + (k + 1) * xs / 4, k % 2 ? 5.1 : 6.5, zs], 0.05, '#888888'); }
       this.booth(r * 0.75, front * (r + 0.4), front > 0 ? 0 : Math.PI, col2);
     } else if (this.style === 'tower') {
       const H = big ? 30 : 22; this.H = H;
@@ -639,6 +983,18 @@ class Generic extends Ride {
       RB.build(this.rot); rb.build(this.rot);
       G.fairCircle(cfg.u, cfg.v, 2, 'ride');
       this.sign(cfg.name.toUpperCase(), 7, 1.4, 0, 4.2, front * 1.0, front > 0 ? 0 : Math.PI, { fg: col2, border: col });
+      // --- Details: Rundgeländer mit Toren und Stufen, Turm-Flansche, Kreuzverbände, Abspannstreben, Maschinenhaus, Leiter, Bedienkabine, Aggregat
+      { const fa = front * PI / 2, GR = '#8d99ae';
+        K.ring(5.35, 0.5, [[fa - 0.19, fa + 0.19], [fa + 0.49, fa + PI * 2 - 0.49]], STEEL, { bars: 0.3 });
+        for (const [da, c] of [[-0.34, '#39d353'], [0.34, '#ff3b30']]) { const a = fa + da, ry = Math.atan2(Math.cos(a), Math.sin(a)); gate(K, Math.cos(a) * 5.35, 0.5, Math.sin(a) * 5.35, ry, 1.4, c);
+          K.at(Math.cos(a) * 5.75, 0, Math.sin(a) * 5.75, ry).box(1.5, 0.25, 0.38, PLATE, 0, 0.125, 0.2); K.at(null); }
+        for (let y = 5; y < H; y += 5) { K.box(1.76, 0.14, 1.68, GR, 0, y, -front * 0.04);
+          for (const s of [-1, 1]) { K.bar([s * 0.83, y - 5, -0.75], [s * 0.83, y, 0.75], 0.06, GR); K.bar([s * 0.83, y - 5, 0.75], [s * 0.83, y, -0.75], 0.06, GR); K.bar([-s * 0.75, y - 5, -front * 0.83], [s * 0.75, y, -front * 0.83], 0.06, GR); } }
+        for (const s of [-1, 1]) { K.tube([s * 0.7, H * 0.45, -front * 0.8], [s * 2.6, 0.6, -front * 4.1], 0.13, GR, 6); footPad(K, s * 2.6, -front * 4.1, 0.5, 0.8); K.box(0.04, H - 2, 0.04, STEEL, s * 0.2, H / 2, -front * 0.92); }
+        for (let y = 1.5; y < H - 1; y += 1) K.box(0.4, 0.03, 0.03, STEEL, 0, y, -front * 0.92);
+        K.box(2.0, 2.2, 1.5, '#2b2d42', 0, H + 0.3, -front * 0.15); K.box(2.04, 0.3, 1.54, YEL, 0, H - 0.5, -front * 0.15); K.box(0.25, 0.25, 0.25, '#ff2a2a', 0, H + 1.55, -front * 0.15, 0, { em: 4 });
+        opCabin(K, -3.4, 0.5, -front * 1.6, front > 0 ? 0 : PI, '#22223b', col, 2.2, 1.7);
+        genset(K, 3.2, 0.5, -front * 1.2, PI / 2); cable(K, [2.6, -front * 1.2], [0.9, -front * 0.9], 0.54); }
       this.booth(3.8, front * 4.6, front > 0 ? 0 : Math.PI, col2);
     } else { // show: Fassade (Lachkabinett / Party-Halle / Wasserbahn)
       const hu = big ? 8.5 : 4.6, hv = 5.5, H = 7;
@@ -653,11 +1009,24 @@ class Generic extends Ride {
       if (cfg.name === 'Big Splash') { this.B.add(new THREE.BoxGeometry(3, 0.6, 14), M('#00b4d8', { metalness: 0.3 }), 0, H + 3, 0, -0.5); this.B.add(new THREE.BoxGeometry(2.4, 0.2, 13), Glow('#90e0ef', 0.8), 0, H + 3.3, 0, -0.5); }
       if (cfg.name === 'Après-Ski Party') { this.B.add(new THREE.ConeGeometry(3, 3, 4), M('#ffffff'), -hu + 3, H + 1.5, 0, 0, Math.PI / 4); this.B.add(new THREE.ConeGeometry(2.4, 2.5, 4), M('#ffffff'), hu - 3, H + 1.2, 0, 0, Math.PI / 4); }
       G.fairBox(cfg.u, cfg.v, hu, hv, 0, 'show');
+      // --- Details (flaches Relief): Eckpilaster mit Neon, Attika, Dach-Pylone, Eingang/Ausgang mit Leuchtkasten und Vordach, Paneel-Fugen, Sockel, Notausgang, Klimagerät
+      { const TR = '#22223b', SM = '#2c2c48', gap = cfg.name === 'Big Splash' ? 1.9 : 0, zf = front * hv;
+        K.box(hu * 2 + 0.12, 0.3, hv * 2 + 0.12, '#101018', 0, 0.15, 0); K.box(hu * 2 + 0.1, 0.12, hv * 2 + 0.1, TR, 0, H + 0.06, 0);
+        for (const s of [-1, 1]) { K.box(0.5, H + 0.5, 0.34, TR, s * (hu - 0.2), (H + 0.5) / 2, zf + front * 0.05); K.box(0.08, H - 0.6, 0.04, col2, s * (hu - 0.2), H / 2, zf + front * 0.24, 0, { em: 1.6 });
+          K.box(hu - gap + 0.15, 0.5, 0.3, TR, s * (hu + gap + 0.15) / 2, H + 0.25, zf - front * 0.2);
+          K.box(0.9, 1.7, 0.9, TR, s * (hu - 0.45), H + 0.85, zf - front * 0.45); K.box(1.0, 0.14, 1.0, col2, s * (hu - 0.45), H + 1.77, zf - front * 0.45, 0, { em: 1.2 });
+          for (let z = -hv + 1.83; z < hv - 0.5; z += 1.83) K.box(0.06, H - 0.4, 0.08, SM, s * (hu + 0.03), H / 2 + 0.1, z); }
+        for (let x = -hu + 2; x < hu - 0.5; x += 2) K.box(0.08, H - 0.4, 0.06, SM, x, H / 2 + 0.1, -zf - front * 0.03);
+        for (const [x, c] of [[-hu * 0.3, '#39d353'], [-hu * (big ? 0.72 : 0.68), '#ff3b30']]) { K.box(1.5, 2.3, 0.05, '#050308', x, 1.15, zf + front * 0.05);
+          for (const s of [-1, 1]) K.box(0.12, 2.4, 0.14, col2, x + s * 0.81, 1.2, zf + front * 0.09); K.box(1.74, 0.3, 0.14, DARK, x, 2.5, zf + front * 0.09); K.box(1.5, 0.18, 0.03, c, x, 2.5, zf + front * 0.17, 0, { em: 1.6 });
+          K.box(2.1, 0.08, 0.5, TR, x, 2.75, zf + front * 0.27); K.box(1.9, 0.15, 0.4, PLATE, x, 0.075, zf + front * 0.25); }
+        K.box(0.05, 2.1, 1.0, SM, -(hu + 0.03), 1.05, -front * 1.5); K.box(0.04, 0.15, 0.4, '#39ff14', -(hu + 0.04), 2.3, -front * 1.5, 0, { em: 2.5 });
+        K.box(1.6, 0.8, 1.0, STEEL, hu * 0.45, H + 0.52, -front * (hv - 1.2)); K.box(1.4, 0.05, 0.8, DARK, hu * 0.45, H + 0.95, -front * (hv - 1.2)); }
       const s = new THREE.Object3D(); s.position.set(0, 0.2, 0); this.g.add(s); this.seats.push(s);
       this.booth(hu - 1.6, front * (hv + 0.9), front > 0 ? 0 : Math.PI, col2); this.walk = true;
     }
     this.G.glow.paint(cfg.u, cfg.v, col, 10, 0.5);
-    fillRiders(this.seats, 0.5); this.finish(); this.a = 0;
+    fillRiders(this.seats, 0.5); K.flush(this.B, this); this.finish(); this.a = 0;
   }
   update(dt) {
     this.cycle(dt); const k = this.k;
